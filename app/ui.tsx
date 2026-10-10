@@ -170,10 +170,11 @@ export default function Dashboard() {
       }, 0);
 
     const obligations = state.obligations
-      .filter(
-        (item) =>
-          item.status === 'planned' || item.status === 'review',
-      )
+      .filter((item) => item.status === 'planned')
+      .reduce((sum, item) => sum + item.amountCents, 0);
+
+    const obligationsInReview = state.obligations
+      .filter((item) => item.status === 'review')
       .reduce((sum, item) => sum + item.amountCents, 0);
 
     const confirmedReceivables = state.receivables
@@ -208,6 +209,7 @@ export default function Dashboard() {
       bankCash,
       rescuable,
       obligations,
+      obligationsInReview,
       confirmedReceivables,
       estimatedReceivables,
       dueTasks,
@@ -1054,8 +1056,13 @@ function Finance({
           <div className="metric">{brl(d.rescuable)}</div>
         </div>
         <div className="card span-4">
-          <div className="metric-label">Obrigações próximas</div>
+          <div className="metric-label">Contas reservadas</div>
           <div className="metric">{brl(d.obligations)}</div>
+          {d.obligationsInReview > 0 && (
+            <div className="metric-sub">
+              {brl(d.obligationsInReview)} separado para revisão
+            </div>
+          )}
         </div>
         <div className="card span-4">
           <div className="metric-label">Dívida estrutural</div>
@@ -1384,9 +1391,12 @@ function StudyPanel({
     areas.find((item) => item.status === 'current') ||
     areas.find((item) => item.status === 'training');
 
-  const consolidated = areas.filter(
-    (item) => item.status === 'consolidated',
-  ).length;
+  const detailedSkills = areas.filter(
+    (item) => item.order >= 100,
+  );
+  const consolidated = (
+    detailedSkills.length ? detailedSkills : areas
+  ).filter((item) => item.status === 'consolidated').length;
 
   const best = events.reduce<StudyEvent | null>((winner, item) => {
     const value = item.scoreAfter ?? item.score;
@@ -1448,7 +1458,7 @@ function StudyPanel({
           <h3>Habilidades</h3>
           {areas.length ? (
             <div className="list">
-              {[...areas]
+              {[...(detailedSkills.length ? detailedSkills : areas)]
                 .sort((a, b) => a.order - b.order)
                 .map((area) => (
                   <div
@@ -1545,7 +1555,10 @@ function StudyPanel({
 }
 
 function RadarChart({ areas }: { areas: StudyArea[] }) {
-  const items = [...areas]
+  const principalAreas = areas.filter(
+    (item) => item.order < 100,
+  );
+  const items = [...(principalAreas.length ? principalAreas : areas)]
     .sort((a, b) => a.order - b.order)
     .slice(0, 7);
 
