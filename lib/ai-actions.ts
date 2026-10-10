@@ -207,6 +207,10 @@ const BASE_JORNADA_TOOLS = [
           amount_cents: { type: 'integer', description: 'R$50 = 5000 centavos.' },
           description: { type: 'string' },
           category: { type: 'string' },
+          account_name: {
+            type: 'string',
+            description: 'Conta onde o dinheiro entrou/saiu, somente se Brito informar. Nunca adivinhe.',
+          },
           occurred_on: { type: 'string', description: 'YYYY-MM-DD. Omita para hoje.' },
         },
         required: ['type', 'amount_cents', 'description'],
@@ -501,6 +505,7 @@ export function normalizeAction(
           amount_cents: amount,
           description,
           category: optionalText(raw.category, 80),
+          account_name: optionalText(raw.account_name, 120),
           occurred_on: isoDate(raw.occurred_on) || todayLocal(),
         },
       };
@@ -725,6 +730,48 @@ export function normalizeAction(
       throw new Error('Ação não permitida.');
     }
   }
+}
+
+function findFinancialAccount(
+  state: WorkspaceState,
+  label?: unknown,
+) {
+  const target = text(label, 120)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('pt-BR');
+
+  if (!target) return undefined;
+
+  const active = state.financialAccounts.filter(
+    (account) => account.active,
+  );
+  const exact = active.filter(
+    (account) =>
+      account.name
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLocaleLowerCase('pt-BR') === target,
+  );
+  if (exact.length === 1) return exact[0];
+
+  const partial = active.filter((account) => {
+    const name = account.name
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLocaleLowerCase('pt-BR');
+    return name.includes(target) || target.includes(name);
+  });
+
+  if (partial.length === 1) return partial[0];
+  if (partial.length > 1) {
+    throw new Error(
+      'Encontrei mais de uma conta parecida. Diga qual conta exatamente.',
+    );
+  }
+  throw new Error(
+    `Não encontrei a conta “${String(label)}” na Jornada.`,
+  );
 }
 
 function findContactId(state: WorkspaceState, label?: unknown) {
@@ -1014,8 +1061,16 @@ export function executeAction(state: WorkspaceState, action: JornadaAction) {
   }
 
   if (normalized.name === 'create_transaction') {
+    const account = a.account_name
+      ? findFinancialAccount(state, a.account_name)
+      : undefined;
+    const accountBefore = account
+      ? (structuredClone(account) as unknown as Record<string, unknown>)
+      : undefined;
+
     state.transactions.unshift({
       id,
+      accountId: account?.id,
       type: a.type,
       amountCents: a.amount_cents,
       occurredOn: a.occurred_on,
@@ -1027,10 +1082,40 @@ export function executeAction(state: WorkspaceState, action: JornadaAction) {
       createdAt: at,
       updatedAt: at,
     });
+
+    if (account) {
+      const base =
+        account.currentBalanceCents ??
+        account.openingBalanceCents;
+      account.currentBalanceCents =
+        a.type === 'income'
+          ? base + a.amount_cents
+          : base - a.amount_cents;
+      account.balanceAsOf = at;
+      account.updatedAt = at;
+    }
+
     return {
       collection: 'transactions' as const,
       entityId: id,
-      message: `${a.type === 'income' ? 'Entrada' : 'Gasto'} de ${brl(a.amount_cents)} salvo.`,
+      message: `${a.type === 'income' ? 'Entrada' : 'Gasto'} de ${brl(a.amount_cents)} salvo${account ? ` em ${account.name}` : ''}.`,
+      ...(account && accountBefore
+        ? {
+            undoChanges: [
+              {
+                kind: 'restore' as const,
+                collection: 'financialAccounts',
+                entityId: account.id,
+                before: accountBefore,
+              },
+              {
+                kind: 'delete' as const,
+                collection: 'transactions',
+                entityId: id,
+              },
+            ],
+          }
+        : {}),
     };
   }
 
