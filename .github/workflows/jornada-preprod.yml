@@ -1,0 +1,33 @@
+name: Jornada V2.1 pre-production verification
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regression-build:
+    name: Tests, TypeScript and Next.js build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      CI: 'true'
+    steps:
+      - name: Checkout the exact proposed commit
+        uses: actions/checkout@v4
+      - name: Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install dependencies (no deploy, no project credentials)
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Synthetic regressions
+        run: npm test
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: Full Next.js build
+        run: npm run build
