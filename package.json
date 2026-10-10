@@ -9,7 +9,8 @@
     "test": "node --experimental-strip-types --experimental-test-module-mocks --experimental-loader ./tests/ts-extension-loader.mjs --test tests/v2-regression.test.ts tests/import-route.test.ts tests/retention-plan.test.ts tests/whatsapp-contract.test.ts tests/blob-audit-guard.test.mjs tests/llm-redaction.test.ts",
     "audit:blob": "node scripts/audit-private-blob.mjs",
     "audit:blob:safe": "node scripts/run-safe-blob-audit.mjs",
-    "test:blob-audit-guard": "node --test tests/blob-audit-guard.test.mjs"
+    "test:blob-audit-guard": "node --test tests/blob-audit-guard.test.mjs",
+    "preflight:env": "node scripts/preflight-environment.mjs"
   },
   "dependencies": {
     "@vercel/blob": "^2.0.0",
