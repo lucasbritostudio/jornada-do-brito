@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireAuthenticated } from '@/lib/auth';
 import { getState, saveState, audit } from '@/lib/store';
 import { buildInsights } from '@/lib/insights';
-import { minimizeAiContext } from '@/lib/ai-context';
+import { containsNameMention, minimizeAiContext } from '@/lib/ai-context';
 import {
   generateWithJornadaTools,
   llmStatus,
@@ -39,9 +39,8 @@ function clientContext(
   state: Awaited<ReturnType<typeof getState>>,
   prompt: string,
 ) {
-  const lower = prompt.toLocaleLowerCase('pt-BR');
   const named = state.contacts.filter((contact) =>
-    lower.includes(contact.name.toLocaleLowerCase('pt-BR')),
+    containsNameMention(prompt, contact.name),
   );
   const wantsClients = /cliente|trabalho|projeto|negocia|or[cç]amento|briefing|pagamento|aprova[cç][aã]o/i.test(
     prompt,
