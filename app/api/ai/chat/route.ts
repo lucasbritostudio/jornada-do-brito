@@ -48,8 +48,11 @@ function clientContext(
   );
   if (!named.length && !wantsClients) return [];
 
-  const contacts = named.length ? named : state.contacts.slice(0, 12);
-  return contacts.slice(0, 12).map((contact) => {
+  // A generic question about customer service must not disclose a list of
+  // named people. Include names only for an explicit client lookup or list.
+  const asksForList = /(?:quais|liste|lista|meus|todos|quem)[\\s\\S]{0,35}client|client[es\\s]{0,8}pendente/i.test(prompt);
+  const contacts = named.length ? named : asksForList ? state.contacts.slice(0, 6) : [];
+  return contacts.slice(0, 6).map((contact) => {
     const experiences = state.clientExperiences
       .filter(
         (item) =>
