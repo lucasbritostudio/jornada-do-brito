@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireAuthenticated } from '@/lib/auth';
 import { getState, saveState, audit } from '@/lib/store';
 import { buildInsights } from '@/lib/insights';
+import { minimizeAiContext } from '@/lib/ai-context';
 import {
   generateWithJornadaTools,
   llmStatus,
@@ -317,7 +318,7 @@ export async function POST(req: Request) {
     }
 
     const context = {
-      ...compactContext(state, prompt),
+      ...minimizeAiContext(compactContext(state, prompt), prompt),
       priorResolvedCases: priorResolvedCases.map((item) => ({
         problem: sanitizeForLlm(item.problem),
         successfulResolution: sanitizeForLlm(
@@ -405,7 +406,7 @@ export async function POST(req: Request) {
     try {
       const result = await generateWithJornadaTools(
         messages,
-        JORNADA_TOOLS,
+        hasExplicitActionIntent(prompt) ? JORNADA_TOOLS : [],
       );
 
       audit(state, {
