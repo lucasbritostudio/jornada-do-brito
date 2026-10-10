@@ -1,7 +1,16 @@
 'use client';
+
 import { useEffect, useState } from 'react';
 
-type ChatMessage = { role: 'user' | 'assistant'; content: string };
+type Feedback = 'resolved' | 'not_resolved';
+
+type ChatMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+  turnId?: string;
+  feedback?: Feedback;
+  outcome?: string;
+};
 
 type PendingAction = {
   token: string;
@@ -17,6 +26,12 @@ type UndoState = {
   message: string;
 };
 
+function validThreadId(value: string | null) {
+  return Boolean(
+    value && /^[a-zA-Z0-9_-]{8,120}$/.test(value),
+  );
+}
+
 export default function AIDrawerV2({
   insights,
   close,
@@ -29,24 +44,93 @@ export default function AIDrawerV2({
   const [msg, setMsg] = useState('');
   const [history, setHistory] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState<'checking' | 'groq' | 'local'>('checking');
-  const [pending, setPending] = useState<PendingAction | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [status, setStatus] = useState<
+    'checking' | 'groq' | 'local'
+  >('checking');
+  const [pending, setPending] =
+    useState<PendingAction | null>(null);
   const [undo, setUndo] = useState<UndoState | null>(null);
+  const [threadId, setThreadId] = useState('');
+  const [learningCount, setLearningCount] = useState(0);
+  const [feedbackBusy, setFeedbackBusy] = useState('');
 
   useEffect(() => {
     fetch('/api/ai/chat')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => setStatus(j?.groqConfigured ? 'groq' : 'local'))
+      .then((response) =>
+        response.ok ? response.json() : null,
+      )
+      .then((json) =>
+        setStatus(json?.groqConfigured ? 'groq' : 'local'),
+      )
       .catch(() => setStatus('local'));
+
+    const saved = window.localStorage.getItem(
+      'jornada_ai_thread_id',
+    );
+    const id = validThreadId(saved)
+      ? String(saved)
+      : crypto.randomUUID();
+
+    setThreadId(id);
+    window.localStorage.setItem(
+      'jornada_ai_thread_id',
+      id,
+    );
+
+    fetch(
+      `/api/ai/history?threadId=${encodeURIComponent(id)}`,
+      { cache: 'no-store' },
+    )
+      .then((response) =>
+        response.ok ? response.json() : null,
+      )
+      .then((json) => {
+        if (Array.isArray(json?.messages)) {
+          setHistory(json.messages);
+        }
+        setLearningCount(json?.stats?.learningCount || 0);
+      })
+      .finally(() => setHistoryLoading(false));
   }, []);
 
-  async function ask(e: React.FormEvent) {
-    e.preventDefault();
+  function startNewConversation() {
+    const id = crypto.randomUUID();
+    setThreadId(id);
+    window.localStorage.setItem(
+      'jornada_ai_thread_id',
+      id,
+    );
+    setHistory([]);
+    setPending(null);
+    setUndo(null);
+    setMsg('');
+  }
+
+  async function ask(event: React.FormEvent) {
+    event.preventDefault();
+
     const prompt = msg.trim();
     if (!prompt || loading || pending) return;
 
-    const previous = history;
-    setHistory([...previous, { role: 'user', content: prompt }]);
+    const id = threadId || crypto.randomUUID();
+    if (!threadId) {
+      setThreadId(id);
+      window.localStorage.setItem(
+        'jornada_ai_thread_id',
+        id,
+      );
+    }
+
+    const previous = history.map((item) => ({
+      role: item.role,
+      content: item.content,
+    }));
+
+    setHistory((current) => [
+      ...current,
+      { role: 'user', content: prompt },
+    ]);
     setMsg('');
     setLoading(true);
     setUndo(null);
@@ -54,14 +138,26 @@ export default function AIDrawerV2({
     const response = await fetch('/api/ai/chat', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ message: prompt, history: previous }),
+      body: JSON.stringify({
+        message: prompt,
+        history: previous,
+        threadId: id,
+      }),
     });
+
     const json = await response.json();
     setLoading(false);
 
     if (response.ok) {
-      setHistory((h) => [
-        ...h,
+      const finalThreadId = json.threadId || id;
+      setThreadId(finalThreadId);
+      window.localStorage.setItem(
+        'jornada_ai_thread_id',
+        finalThreadId,
+      );
+
+      setHistory((current) => [
+        ...current,
         {
           role: 'assistant',
           content:
@@ -69,67 +165,141 @@ export default function AIDrawerV2({
             (json.action
               ? 'Preparei uma ação para sua confirmação.'
               : 'Pronto.'),
+          turnId: json.turnId,
+          outcome: json.executed
+            ? 'action'
+            : json.action
+              ? 'proposal'
+              : json.fallback
+                ? 'fallback'
+                : 'answered',
         },
       ]);
+
+      if (typeof json.learningCount === 'number') {
+        setLearningCount(json.learningCount);
+      }
 
       if (json.executed?.undoToken) {
         setUndo({
           token: json.executed.undoToken,
           minutes: json.executed.undoMinutes,
-          message: json.executed.message || json.text || 'Registro salvo.',
+          message:
+            json.executed.message ||
+            json.text ||
+            'Registro salvo.',
         });
         await onExecuted();
       }
 
       if (json.action) setPending(json.action);
-      setStatus(json.provider === 'groq' ? 'groq' : 'local');
+      setStatus(
+        json.provider === 'groq' ? 'groq' : 'local',
+      );
       return;
     }
 
-    setHistory((h) => [
-      ...h,
+    setHistory((current) => [
+      ...current,
       {
         role: 'assistant',
-        content: json.error || 'Não consegui responder agora.',
+        content:
+          json.error || 'Não consegui responder agora.',
       },
     ]);
   }
 
-  async function confirmAction() {
-    if (!pending || loading) return;
-    setLoading(true);
-    const response = await fetch('/api/ai/action', {
+  async function giveFeedback(
+    turnId: string,
+    feedback: Feedback,
+  ) {
+    if (!threadId || !turnId || feedbackBusy) return;
+
+    setFeedbackBusy(turnId);
+
+    const response = await fetch('/api/ai/feedback', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ token: pending.token }),
+      body: JSON.stringify({
+        threadId,
+        turnId,
+        feedback,
+      }),
     });
-    const json = await response.json();
-    setLoading(false);
 
-    if (response.ok) {
-      setHistory((h) => [
-        ...h,
-        { role: 'assistant', content: json.message },
-      ]);
-      setPending(null);
-      await onExecuted();
-    } else {
-      setHistory((h) => [
-        ...h,
+    const json = await response.json();
+    setFeedbackBusy('');
+
+    if (!response.ok) return;
+
+    setHistory((current) =>
+      current.map((item) =>
+        item.turnId === turnId
+          ? { ...item, feedback }
+          : item,
+      ),
+    );
+
+    if (typeof json.learningCount === 'number') {
+      setLearningCount(json.learningCount);
+    }
+
+    if (json.lessonCreated) {
+      setHistory((current) => [
+        ...current,
         {
           role: 'assistant',
-          content: json.error || 'Não foi possível executar.',
+          content:
+            'Aprendi com esse caso: guardei o que não resolveu e a solução que você confirmou que funcionou.',
         },
       ]);
     }
   }
 
-  function cancelAction() {
-    setHistory((h) => [
-      ...h,
+  async function confirmAction() {
+    if (!pending || loading) return;
+
+    setLoading(true);
+
+    const response = await fetch('/api/ai/action', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: pending.token }),
+    });
+
+    const json = await response.json();
+    setLoading(false);
+
+    if (response.ok) {
+      setHistory((current) => [
+        ...current,
+        {
+          role: 'assistant',
+          content: json.message,
+        },
+      ]);
+      setPending(null);
+      await onExecuted();
+      return;
+    }
+
+    setHistory((current) => [
+      ...current,
       {
         role: 'assistant',
-        content: 'Ação cancelada. Nenhum dado foi alterado.',
+        content:
+          json.error || 'Não foi possível executar.',
+      },
+    ]);
+  }
+
+  function cancelAction() {
+    setHistory((current) => [
+      ...current,
+      {
+        role: 'assistant',
+        content:
+          'Ação cancelada. Nenhum dado foi alterado.',
       },
     ]);
     setPending(null);
@@ -137,30 +307,37 @@ export default function AIDrawerV2({
 
   async function undoLast() {
     if (!undo || loading) return;
+
     setLoading(true);
+
     const response = await fetch('/api/ai/undo', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ token: undo.token }),
     });
+
     const json = await response.json();
     setLoading(false);
 
     if (response.ok) {
-      setHistory((h) => [
-        ...h,
-        { role: 'assistant', content: json.message },
+      setHistory((current) => [
+        ...current,
+        {
+          role: 'assistant',
+          content: json.message,
+        },
       ]);
       setUndo(null);
       await onExecuted();
       return;
     }
 
-    setHistory((h) => [
-      ...h,
+    setHistory((current) => [
+      ...current,
       {
         role: 'assistant',
-        content: json.error || 'Não foi possível desfazer.',
+        content:
+          json.error || 'Não foi possível desfazer.',
       },
     ]);
   }
@@ -178,39 +355,148 @@ export default function AIDrawerV2({
                 : 'verificando'}
           </div>
           <h2>Seu copiloto.</h2>
+          <div className="row-sub">
+            Memória privada · {learningCount}{' '}
+            {learningCount === 1
+              ? 'caso aprendido'
+              : 'casos aprendidos'}
+          </div>
         </div>
-        <button className="close" onClick={close}>
-          ×
-        </button>
+
+        <div
+          style={{
+            display: 'flex',
+            gap: 8,
+            alignItems: 'center',
+          }}
+        >
+          <button
+            className="btn secondary small"
+            onClick={startNewConversation}
+            type="button"
+          >
+            Nova conversa
+          </button>
+          <button className="close" onClick={close}>
+            ×
+          </button>
+        </div>
       </div>
 
-      <p style={{ color: 'var(--muted)', lineHeight: 1.6 }}>
-        Quando você manda registrar algo claro e de baixo risco, eu salvo
-        direto. Se eu estiver em dúvida, pergunto antes.
+      <p
+        style={{
+          color: 'var(--muted)',
+          lineHeight: 1.6,
+        }}
+      >
+        Suas conversas ficam guardadas na Jornada. Quando uma
+        tentativa falhar e outra resolver, seu feedback ajuda a IA
+        reaproveitar a solução em casos parecidos.
       </p>
 
-      {history.length ? (
-        <div className="list" style={{ margin: '18px 0' }}>
-          {history.map((m, k) => (
+      {historyLoading ? (
+        <div className="empty">Carregando conversa…</div>
+      ) : history.length ? (
+        <div
+          className="list"
+          style={{ margin: '18px 0' }}
+        >
+          {history.map((message, index) => (
             <div
-              key={k}
+              key={
+                message.turnId ||
+                `${message.role}-${index}`
+              }
               className="insight"
               style={{
-                marginLeft: m.role === 'user' ? 32 : 0,
-                marginRight: m.role === 'assistant' ? 24 : 0,
+                marginLeft:
+                  message.role === 'user' ? 32 : 0,
+                marginRight:
+                  message.role === 'assistant' ? 24 : 0,
               }}
             >
-              <strong>{m.role === 'user' ? 'Você' : 'Jornada IA'}</strong>
-              <p style={{ whiteSpace: 'pre-wrap' }}>{m.content}</p>
+              <strong>
+                {message.role === 'user'
+                  ? 'Você'
+                  : 'Jornada IA'}
+              </strong>
+
+              <p style={{ whiteSpace: 'pre-wrap' }}>
+                {message.content}
+              </p>
+
+              {message.role === 'assistant' &&
+                message.turnId && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      gap: 7,
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      marginTop: 10,
+                    }}
+                  >
+                    {!message.feedback ? (
+                      <>
+                        <button
+                          className="btn secondary small"
+                          type="button"
+                          disabled={
+                            feedbackBusy === message.turnId
+                          }
+                          onClick={() =>
+                            giveFeedback(
+                              message.turnId!,
+                              'resolved',
+                            )
+                          }
+                        >
+                          Resolveu
+                        </button>
+
+                        <button
+                          className="btn secondary small"
+                          type="button"
+                          disabled={
+                            feedbackBusy === message.turnId
+                          }
+                          onClick={() =>
+                            giveFeedback(
+                              message.turnId!,
+                              'not_resolved',
+                            )
+                          }
+                        >
+                          Não resolveu
+                        </button>
+                      </>
+                    ) : (
+                      <span
+                        className={`badge ${
+                          message.feedback === 'resolved'
+                            ? 'good'
+                            : 'warn'
+                        }`}
+                      >
+                        {message.feedback === 'resolved'
+                          ? 'Resolveu ✓'
+                          : 'Não resolveu'}
+                      </span>
+                    )}
+                  </div>
+                )}
             </div>
           ))}
         </div>
       ) : (
         <div className="list">
-          {insights.slice(0, 3).map((i, k) => (
-            <div className={`insight ${i.kind}`} key={k}>
-              <strong>{i.title}</strong>
-              <p>{i.detail}</p>
+          {insights.slice(0, 3).map((item, index) => (
+            <div
+              className={`insight ${item.kind}`}
+              key={index}
+            >
+              <strong>{item.title}</strong>
+              <p>{item.detail}</p>
             </div>
           ))}
         </div>
@@ -219,10 +505,20 @@ export default function AIDrawerV2({
       {undo && (
         <div
           className="card"
-          style={{ marginTop: 16, borderColor: '#73804d' }}
+          style={{
+            marginTop: 16,
+            borderColor: '#73804d',
+          }}
         >
-          <div className="ai-label">Salvo automaticamente</div>
-          <p style={{ color: 'var(--text)', lineHeight: 1.5 }}>
+          <div className="ai-label">
+            Salvo automaticamente
+          </div>
+          <p
+            style={{
+              color: 'var(--text)',
+              lineHeight: 1.5,
+            }}
+          >
             {undo.message}
           </p>
           <button
@@ -232,7 +528,10 @@ export default function AIDrawerV2({
           >
             {loading ? 'Desfazendo…' : 'Desfazer'}
           </button>
-          <div className="row-sub" style={{ marginTop: 8 }}>
+          <div
+            className="row-sub"
+            style={{ marginTop: 8 }}
+          >
             {undo.minutes
               ? `Disponível por cerca de ${undo.minutes} minutos.`
               : 'Disponível por tempo limitado.'}
@@ -243,17 +542,39 @@ export default function AIDrawerV2({
       {pending && (
         <div
           className="card"
-          style={{ marginTop: 16, borderColor: '#73804d' }}
+          style={{
+            marginTop: 16,
+            borderColor: '#73804d',
+          }}
         >
-          <div className="ai-label">Aguardando sua confirmação</div>
-          <h3 style={{ marginTop: 8 }}>{pending.title}</h3>
-          <p style={{ color: 'var(--text)', lineHeight: 1.5 }}>
+          <div className="ai-label">
+            Aguardando sua confirmação
+          </div>
+          <h3 style={{ marginTop: 8 }}>
+            {pending.title}
+          </h3>
+          <p
+            style={{
+              color: 'var(--text)',
+              lineHeight: 1.5,
+            }}
+          >
             {pending.summary}
           </p>
+
           {!!pending.details?.length && (
-            <div className="row-sub">{pending.details.join(' · ')}</div>
+            <div className="row-sub">
+              {pending.details.join(' · ')}
+            </div>
           )}
-          <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+
+          <div
+            style={{
+              display: 'flex',
+              gap: 8,
+              marginTop: 14,
+            }}
+          >
             <button
               className="btn"
               onClick={confirmAction}
@@ -272,30 +593,49 @@ export default function AIDrawerV2({
         </div>
       )}
 
-      <form onSubmit={ask} style={{ marginTop: 18 }}>
+      <form
+        onSubmit={ask}
+        style={{ marginTop: 18 }}
+      >
         <textarea
           className="textarea"
           placeholder={
             pending
               ? 'Confirme ou cancele a ação acima.'
-              : 'Ex.: Recebi R$ 200 da Juliany hoje.'
+              : 'Ex.: Registre que recebi R$ 200 de um cliente hoje.'
           }
           value={msg}
-          onChange={(e) => setMsg(e.target.value)}
+          onChange={(event) =>
+            setMsg(event.target.value)
+          }
           maxLength={5000}
           disabled={!!pending}
         />
+
         <button
           className="btn"
-          style={{ width: '100%', marginTop: 8 }}
-          disabled={loading || !msg.trim() || !!pending}
+          style={{
+            width: '100%',
+            marginTop: 8,
+          }}
+          disabled={
+            loading ||
+            !msg.trim() ||
+            !!pending
+          }
         >
-          {loading ? 'Pensando…' : 'Enviar para a Jornada'}
+          {loading
+            ? 'Pensando…'
+            : 'Enviar para a Jornada'}
         </button>
       </form>
 
-      <div className="row-sub" style={{ marginTop: 10 }}>
-        Registrar dados pode ser automático. Pagar, transferir, apagar e
+      <div
+        className="row-sub"
+        style={{ marginTop: 10 }}
+      >
+        Feedback e histórico ficam privados na Jornada. Registrar
+        dados pode ser automático; pagar, transferir, apagar e
         enviar mensagens externas continuam protegidos.
       </div>
     </aside>
