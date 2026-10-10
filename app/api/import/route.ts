@@ -3,6 +3,8 @@ import { requireAuthenticated } from '@/lib/auth';
 import { audit, getState, saveState } from '@/lib/store';
 import type { RecordSource, WorkspaceState } from '@/lib/types';
 
+import { isBlobConflict } from '@/lib/blob-conflict';
+
 export const runtime = 'nodejs';
 
 const IMPORT_ORDER = [
@@ -310,6 +312,12 @@ export async function POST(req: Request) {
       results,
     });
   } catch (error) {
+    if (isBlobConflict(error)) {
+      return NextResponse.json(
+        { error: 'Outra alteração foi salva ao mesmo tempo. Atualize e tente novamente.' },
+        { status: 409 },
+      );
+    }
     if (
       error instanceof Error &&
       error.message === 'UNAUTHORIZED'
