@@ -65,6 +65,7 @@ export function defaultState(): WorkspaceState {
     professionalPatterns: [],
     files: [],
     audit: [],
+    aiUndoEvents: [],
     importBatches: [],
     createdAt: at,
     updatedAt: at,
@@ -122,6 +123,7 @@ export function upgradeState(raw: unknown): WorkspaceState {
     professionalPatterns: arr(state.professionalPatterns) as WorkspaceState['professionalPatterns'],
     files: arr(state.files) as WorkspaceState['files'],
     audit: arr(state.audit) as WorkspaceState['audit'],
+    aiUndoEvents: arr(state.aiUndoEvents) as WorkspaceState['aiUndoEvents'],
     importBatches: arr(state.importBatches) as string[],
     createdAt: state.createdAt || base.createdAt,
     updatedAt: state.updatedAt || base.updatedAt,
@@ -173,6 +175,10 @@ export async function getState(): Promise<WorkspaceState> {
 export async function saveState(input: WorkspaceState) {
   const state = upgradeState(input);
   refreshProfessionalPatterns(state);
+  const currentTime = Date.now();
+  state.aiUndoEvents = state.aiUndoEvents
+    .filter((item) => new Date(item.expiresAt).getTime() > currentTime)
+    .slice(0, 60);
   state.updatedAt = now();
   await writeJson(STATE_PATH, state);
   return state;

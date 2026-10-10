@@ -367,6 +367,20 @@ export type FileRecord = {
   createdAt: string;
 };
 
+export type UndoChange = {
+  kind: 'delete' | 'restore';
+  collection: string;
+  entityId: Id;
+  before?: Record<string, unknown>;
+};
+
+export type AiUndoEvent = {
+  id: Id;
+  expiresAt: string;
+  changes: UndoChange[];
+  createdAt: string;
+};
+
 export type AuditEntry = {
   id: Id;
   at: string;
@@ -423,6 +437,7 @@ export type WorkspaceState = {
   professionalPatterns: ProfessionalPattern[];
   files: FileRecord[];
   audit: AuditEntry[];
+  aiUndoEvents: AiUndoEvent[];
   importBatches: string[];
   createdAt: string;
   updatedAt: string;
