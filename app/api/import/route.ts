@@ -70,8 +70,9 @@ function mergeCollection(
 
     const existingIndex = target.findIndex((item) => item.importKey === importKey);
     const timestamp = new Date().toISOString();
+    const { id: _ignoredIncomingId, ...recordWithoutId } = record;
     const clean = {
-      ...record,
+      ...recordWithoutId,
       importKey,
       provenance: {
         ...source,
@@ -80,8 +81,6 @@ function mergeCollection(
       },
       updatedAt: record.updatedAt || timestamp,
     };
-
-    delete clean.id;
 
     if (existingIndex >= 0) {
       target[existingIndex] = {

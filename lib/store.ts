@@ -1,5 +1,6 @@
 import { get, put, list } from '@vercel/blob';
 import type { WorkspaceState, AuditEntry } from './types';
+import { refreshProfessionalPatterns } from './patterns';
 
 const STATE_PATH = 'jornada/state.json';
 const AUTH_PATH = 'jornada/auth.json';
@@ -171,6 +172,7 @@ export async function getState(): Promise<WorkspaceState> {
 
 export async function saveState(input: WorkspaceState) {
   const state = upgradeState(input);
+  refreshProfessionalPatterns(state);
   state.updatedAt = now();
   await writeJson(STATE_PATH, state);
   return state;
