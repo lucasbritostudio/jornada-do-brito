@@ -117,10 +117,18 @@ export async function getGroqSecretStatus() {
   }
 
   const file = await readSecrets();
+  let decryptable = false;
+  if (file.groq) {
+    try {
+      decryptable = Boolean(decrypt(file.groq));
+    } catch {
+      // Do not call a stored key "configured" when it cannot be decrypted.
+    }
+  }
   return {
-    configured: Boolean(file.groq),
+    configured: decryptable,
     source: file.groq ? ('encrypted-store' as const) : ('none' as const),
-    last4: file.groq?.last4 || null,
+    last4: decryptable ? file.groq?.last4 || null : null,
     updatedAt: file.groq?.updatedAt || null,
   };
 }
