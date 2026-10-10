@@ -1,49 +1,47 @@
-# Arquitetura — estado inicial
+# Arquitetura — Jornada do Brito
 
-## Objetivo
+Status: **v1 concluída**
 
-A Jornada do Brito será um sistema pessoal, mobile-first, para organizar vida, trabalho e finanças de forma integrada e gamificada.
+A arquitetura funcional e técnica da Jornada foi fechada em 09/10/2026.
 
-## Limites já definidos
+## Documentos oficiais
 
-- A área pessoal e a futura área de clientes devem ter privacidade separada.
-- O fluxo de cliente previsto é: solicitação → orçamento → aceite → contrato → produção → aprovação → pagamento.
-- Estados financeiros devem ser distintos e não misturados.
-- O sistema deve poder crescer sem ficar preso à infraestrutura do Chefe da Pizza.
-- Não haverá domínio pago nesta fase.
-- Não haverá banco de produção nesta fase.
-- Não haverá autenticação real nesta fase.
-- Não haverá integrações pagas nesta fase.
+- [Arquitetura v1](./ARQUITETURA_V1.md)
+- [Modelo de dados v1](./MODELO_DADOS_V1.md)
+- [UX v1](./UX_V1.md)
+- [IA e agentes v1](./IA_AGENTES_V1.md)
+- [WhatsApp v1](./WHATSAPP_V1.md)
+- [Segurança v1](./SEGURANCA_V1.md)
+- [ADR-001 — Stack](./ADR-001-STACK.md)
+- [Próximos passos](./PROXIMOS_PASSOS.md)
 
-## O que NÃO será decidido por código agora
+## Stack
 
-Antes da implementação funcional, validar:
+- Next.js + TypeScript
+- Tailwind CSS + shadcn/ui
+- Supabase: Postgres, Auth, Storage, Realtime, Cron
+- Vercel AI SDK
+- Mastra
+- WhatsApp Business Platform / Cloud API atrás de adaptador próprio
 
-- mapa principal e navegação;
-- missões, níveis e conquistas;
-- modelo de projetos;
-- clientes e portal externo;
-- finanças;
-- equipamentos;
-- permissões;
-- autenticação;
-- armazenamento;
-- banco de dados;
-- notificações.
+## Escopo
 
-## Infraestrutura inicial
+A Jornada organizará:
+- atendimento;
+- clientes e oportunidades;
+- projetos;
+- financeiro;
+- dívidas;
+- objetivos e ambições;
+- arquivos;
+- IA;
+- automações.
 
-GitHub:
-- conta: `lucasbritostudio`
-- repositório: `jornada-do-brito`
-- visibilidade: privada
-- branch principal: `main`
+## Regra de isolamento
 
-Vercel:
-- ainda não criada;
-- será conectada somente a este repositório;
-- primeiro deploy será estático e sem efeitos externos.
+Nenhuma funcionalidade da Jornada pode depender de infraestrutura, credenciais, banco, Redis, WhatsApp, Evolution ou serviços da Pizzaria São Francisco ou do Chefe da Pizza.
 
-## Regra de segurança
+## Estado
 
-Nenhuma funcionalidade da Jornada deve depender de contas, bancos, Redis, domínios, serviços ou credenciais do Chefe da Pizza.
+A próxima fase é implementação.
+As decisões que exigem informação pessoal/operacional de Brito serão perguntadas uma por vez.
