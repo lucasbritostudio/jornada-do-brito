@@ -90,3 +90,17 @@ Foi executado `npm install --no-audit --no-fund --ignore-scripts` para dependên
 - A configuração Groq Data Controls/ZDR da conta não foi acessada e continua pendente.
 
 Após essa validação, o veredito de publicação permanece **NÃO PRONTO PARA DEPLOY** exclusivamente pelas verificações reais pendentes, lockfile e revisão operacional de efeitos externos. Código da branch compilou e testes sintéticos passaram. Produção intocada.
+
+
+## Auditoria nativa segura de metadados do Blob (10/10/2026)
+
+Foi encontrado um meio de verificar o Blob diretamente pela integração autenticada oficial da Vercel, **sem acessar/transferir o valor do BLOB_READ_WRITE_TOKEN**. O identificador da loja foi obtido pelo campo `contentHint.storeId` da variável configurada no projeto e utilizado na leitura nativa `get_storage_stores_by_id` (somente leitura).
+
+- Store: `store_wyYywwTi8yczS3z1`, nome `jornada-do-brito-data`.
+- Tipo Blob com acesso **private**, status `available`, região `gru1`, cobrança `active`, quota não excedida.
+- Contagem reportada pela Vercel: **3 objetos**, tamanho total **1.241 bytes** (metadados agregados; não presumir exatidão transacional).
+- **Somente 1 projeto conectado**, `jornada-do-brito`, e nos ambientes production/preview/development. Não há indício nessa vinculação de conexão de outro projeto.
+- Não foram devolvidos nem expostos valores de chaves ou conteúdos de dados de clientes.
+- Logs agrupados e erros da Vercel: nenhum erro de runtime no intervalo consultado de 7 dias; a ausência de erros registrados **não comprova** todos os caminhos exercitados.
+
+**Limite da integração nativa**: permite inspecionar metadados da store, mas **não** listar os nomes individuais dos objetos nem ler o conteúdo de seus blobs. Portanto 3 objetos/1.241 bytes NÃO significam ausência de segredos em histórico, não provam exportação/recuperação de backup e não substituem auditoria real do conteúdo. A ferramenta `npm run audit:blob` foi preparada para ambiente que já possua a credencial de forma segura, porém não foi executada. Não houve deploy, preview, limpeza, escrita ou migração de dados. Veredito de prontidão permanece **NÃO PRONTO PARA DEPLOY**.
