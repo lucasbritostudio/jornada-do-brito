@@ -1,6 +1,7 @@
 import { get, put, list, BlobPreconditionFailedError } from '@vercel/blob';
 import { sanitizeForLlm } from './ai-policy';
 import { planMemoryRetention } from './memory-retention';
+import { prepareClientLesson } from './client-learning';
 
 const INDEX_PATH = 'jornada/ai-memory/index.json';
 const THREAD_PREFIX = 'jornada/ai-memory/threads/';
@@ -443,6 +444,48 @@ export async function recordAiFeedback(input: {
     feedback: turn.feedback,
     threadStatus: thread.status,
     lessonCreated: update.result,
+    learningCount: update.index.lessons.length,
+  };
+}
+
+/**
+ * Manual training from a confirmed outcome: no WhatsApp API, no raw chat,
+ * no Groq call. This is a private reusable lesson, not model fine-tuning.
+ */
+export async function recordConfirmedClientLesson(input: {
+  situation: string;
+  solution: string;
+  confirmed: boolean;
+}) {
+  if (input.confirmed !== true) throw new Error('CLIENT_LESSON_NOT_CONFIRMED');
+  const { problem, successfulResolution } = prepareClientLesson(
+    input.situation, input.solution,
+  );
+  const key = lessonKey(problem, successfulResolution);
+  const update = await mutateIndex((index) => {
+    const existing = index.lessons.find((lesson) =>
+      lessonKey(lesson.problem, lesson.successfulResolution) === key,
+    );
+    if (existing) return { lessonId: existing.id, duplicate: true };
+
+    const at = now();
+    const id = crypto.randomUUID();
+    index.lessons.unshift({
+      id,
+      problem,
+      successfulResolution,
+      failureCount: 0,
+      sourceThreadId: 'manual-whatsapp',
+      sourceTurnId: 'manual-' + id,
+      tags: tokenize(problem + ' ' + successfulResolution),
+      createdAt: at,
+      updatedAt: at,
+      useCount: 0,
+    });
+    return { lessonId: id, duplicate: false };
+  });
+  return {
+    ...update.result,
     learningCount: update.index.lessons.length,
   };
 }
