@@ -57,3 +57,12 @@ A versão publicada da Jornada ainda pode enviar à Groq até cinco regras recen
 O pacote fonte do Drive preserva os nomes completos para uso humano. A importação acima é deliberadamente conservadora enquanto o código de contexto seletivo aguarda futura publicação autorizada.
 
 **A importação real ainda exige execução única em PowerShell**. Não confundir teste de mesclagem com escrita no Blob de produção.
+
+
+## Entrega pronta para download em conversa — sem exportar manualmente o Drive
+
+O mesmo lote validado foi exportado em JSON, com o nome curto `jornada-clientes-v2.json`, como arquivo privado da conversa. O programa local encontra automaticamente este nome em `Downloads`. O JSON preserva os registros do Drive sem alterar conteúdo. Além das validações anteriores, o importador agora **compara o SHA-256 da representação JSON canônica** (`e7e7d46b7dc33f50bcb80d6a736a664a51cf90c19bb3b704aa77ac122115239f`) com o lote revisado. Se o arquivo for diferente ou adulterado, aborta **antes de ler/escrever o Blob**.
+
+Passo simplificado: baixar `jornada-clientes-v2.json` a partir do arquivo entregue na conversa para `Downloads`; depois `git pull --ff-only` e `npm run import:clients:safe` na pasta Jornada autenticada. A importação é uma **gravação efetiva apenas dos dados de clientes da Jornada**; nenhuma mudança de código em produção ou deploy.
+
+Se não aparecer `JORNADA_CLIENTS_IMPORTED` ou `JORNADA_CLIENTS_ALREADY_IMPORTED`, não afirmar que o lote foi carregado. Esse resultado de importação ainda está pendente.
