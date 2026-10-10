@@ -76,11 +76,11 @@ async function callOpenAICompatible(
     }
 
     if (!response.ok) {
-      const message =
-        json?.error?.message ||
-        (response.status === 429
-          ? 'Limite gratuito temporariamente atingido.'
-          : `LLM respondeu HTTP ${response.status}`);
+      // Provider error bodies are untrusted and can contain private input;
+      // expose a stable, generic status instead of echoing upstream text.
+      const message = response.status === 429
+        ? 'Limite gratuito temporariamente atingido.'
+        : `Provedor de IA indisponível (HTTP ${response.status}).`;
       throw new LlmProviderError(
         message,
         response.status,
@@ -221,8 +221,7 @@ export async function generateWithJornadaTools(
         messages: messages.map((entry) => entry.role === 'user'
           ? { ...entry, content: sanitizeForLlm(entry.content) }
           : entry),
-        tools,
-        tool_choice: 'auto',
+        ...(tools.length ? { tools, tool_choice: 'auto' } : {}),
         temperature: 0.2,
         max_completion_tokens: 1000,
       }),
@@ -230,10 +229,17 @@ export async function generateWithJornadaTools(
       cache: 'no-store',
     });
 
-    const json = await response.json();
+    let json: any = null;
+    try {
+      json = await response.json();
+    } catch {
+      // Upstream response may be non-JSON. Never expose raw body.
+    }
     if (!response.ok) {
       throw new LlmProviderError(
-        json?.error?.message || `Groq respondeu HTTP ${response.status}`,
+        response.status === 429
+          ? 'Limite gratuito temporariamente atingido.'
+          : `Provedor de IA indisponível (HTTP ${response.status}).`,
         response.status,
         'groq',
         response.headers.get('retry-after'),
