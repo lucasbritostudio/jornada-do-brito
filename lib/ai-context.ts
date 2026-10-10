@@ -71,16 +71,16 @@ export function minimizeAiContext(
   if (clients) {
     // Relevant client names are necessary for some user-requested work, but
     // no client data leaves the workspace for unrelated prompts.
+    // Client-specific experiences/patterns are already nested in matching
+    // relevantClients; the global recent-client list may identify third parties.
     minimal.relevantClients = context.relevantClients;
-    minimal.recentClientLearning = context.recentClientLearning;
-    minimal.professionalPatterns = context.professionalPatterns;
   }
   if (study) {
     minimal.study = context.study;
     minimal.videoMethod = context.videoMethod;
     if (!clients) minimal.professionalPatterns = context.professionalPatterns;
   }
-  if (planning || clients) {
+  if (planning) {
     minimal.tasks = context.tasks;
     minimal.goals = context.goals;
   }
