@@ -1,4 +1,6 @@
-import { getGroqApiKey, getGroqSecretStatus } from './secrets';\n\nexport type LlmMessage = { role: 'system' | 'user' | 'assistant'; content: string };
+import { getGroqApiKey, getGroqSecretStatus } from './secrets';
+
+export type LlmMessage = { role: 'system' | 'user' | 'assistant'; content: string };
 
 export type LlmResult = {
   text: string;
