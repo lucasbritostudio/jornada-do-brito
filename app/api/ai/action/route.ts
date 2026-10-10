@@ -3,6 +3,8 @@ import { requireAuthenticated } from '@/lib/auth';
 import { getState, saveState, audit } from '@/lib/store';
 import { executeAction, verifyActionToken } from '@/lib/ai-actions';
 
+import { isBlobConflict } from '@/lib/blob-conflict';
+
 export const runtime = 'nodejs';
 
 export async function POST(req: Request) {
@@ -33,6 +35,12 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
+    if (isBlobConflict(error)) {
+      return NextResponse.json(
+        { error: 'Outra alteração foi salva ao mesmo tempo. Atualize e tente novamente.' },
+        { status: 409 },
+      );
+    }
     if (error instanceof Error && error.message === 'UNAUTHORIZED') {
       return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
     }
