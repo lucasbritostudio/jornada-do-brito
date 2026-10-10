@@ -111,3 +111,43 @@ test('rejects a learning summary with personal identifiers before writing state'
   pkg.payload.clientExperiences[0].learnedRule = 'Contatar email@exemplo.com';
   assert.throws(() => prepareClientImport(state(), pkg), /CLIENT_LEARNING_PRIVATE_FIELD_BLOCKED/);
 });
+
+test('sparse valid legacy state imports without losing unknown fields or previous money', () => {
+  const legacy = {
+    version: 1,
+    profile: { displayName: 'Brito', customLegacyFlag: 'keep-me' },
+    settings: { ai: { autoSaveLowRiskExplicitCommands: false } },
+    financialAccounts: [{ id: 'bank-old', currentBalanceCents: 2600 }],
+    obligations: [{ id: 'obligation-old', amountCents: 50000 }],
+    oldCustomField: { important: ['do not delete'] },
+  };
+  const original = structuredClone(legacy);
+  const imported = prepareClientImport(legacy, fixture());
+  assert.equal(imported.changed, true);
+  assert.equal(imported.state.contacts.length, 5);
+  assert.equal(imported.state.clientExperiences.length, 9);
+  assert.deepEqual(imported.state.financialAccounts, legacy.financialAccounts);
+  assert.deepEqual(imported.state.obligations, legacy.obligations);
+  assert.deepEqual(imported.state.profile, legacy.profile);
+  assert.deepEqual(imported.state.settings, legacy.settings);
+  assert.deepEqual(imported.state.oldCustomField, legacy.oldCustomField);
+  assert.deepEqual(legacy, original);
+  assert.equal(imported.state.importBatches.length, 1);
+  const replay = prepareClientImport(imported.state, fixture());
+  assert.equal(replay.alreadyApplied, true);
+});
+
+test('sparse legacy state does not silently replace malformed existing data', () => {
+  const corruptedCollections = {
+    importBatches: [], contacts: { should: 'not overwrite' },
+  };
+  assert.throws(
+    () => prepareClientImport(corruptedCollections, fixture()),
+    /JORNADA_STATE_INCOMPATIBLE/,
+  );
+  const corruptedBatches = { importBatches: 'not-an-array' };
+  assert.throws(
+    () => prepareClientImport(corruptedBatches, fixture()),
+    /JORNADA_STATE_INCOMPATIBLE/,
+  );
+});
