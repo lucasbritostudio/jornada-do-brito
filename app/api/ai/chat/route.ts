@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireAuthenticated } from '@/lib/auth';
 import { getState, saveState, audit } from '@/lib/store';
 import { buildInsights } from '@/lib/insights';
+import { isBlobConflict } from '@/lib/blob-conflict';
 import { containsNameMention, minimizeAiContext } from '@/lib/ai-context';
 import {
   generateWithJornadaTools,
@@ -412,12 +413,9 @@ export async function POST(req: Request) {
         hasExplicitActionIntent(prompt) ? JORNADA_TOOLS : [],
       );
 
-      audit(state, {
-        action: 'ai.chat.completed',
-        collection: 'ai',
-        summary: `${result.provider}/${result.model} · ${result.usage?.totalTokens ?? 0} tokens`,
-      });
-
+      // The private memory thread already records provider, model and
+      // outcome. Avoid a redundant workspace write for every AI answer:
+      // unrelated concurrent edits must never discard a valid response.
       if (result.action) {
         const normalized = normalizeAction(
           result.action.name,
@@ -484,14 +482,8 @@ export async function POST(req: Request) {
           normalized.args,
         );
 
-        audit(state, {
-          action: 'ai.action.proposed',
-          collection: normalized.name,
-          summary: action.summary,
-        });
-
-        await saveState(state);
-
+        // A proposal does not mutate the workspace. Its outcome is stored
+        // in private AI memory, not in the shared mutable state blob.
         return respondWithMemory(
           {
             ...result,
@@ -508,8 +500,6 @@ export async function POST(req: Request) {
           },
         );
       }
-
-      await saveState(state);
 
       return respondWithMemory(
         {
@@ -550,14 +540,8 @@ export async function POST(req: Request) {
       }
 
       if (error instanceof LlmProviderError) {
-        audit(state, {
-          action: 'ai.chat.fallback',
-          collection: 'ai',
-          summary: `${error.provider} HTTP ${error.status ?? 'erro'}`,
-        });
-
-        await saveState(state);
-
+        // Provider errors are kept as fallback turns, avoiding a second
+        // workspace write when a rate limit or connection issue occurs.
         const text = localFallback(
           state,
           error.status === 429
@@ -606,6 +590,12 @@ export async function POST(req: Request) {
       throw error;
     }
   } catch (error) {
+    if (isBlobConflict(error)) {
+      return NextResponse.json(
+        { error: 'Outra atualização foi salva ao mesmo tempo. Atualize e tente novamente.' },
+        { status: 409 },
+      );
+    }
     if (
       error instanceof Error &&
       error.message === 'UNAUTHORIZED'
@@ -619,9 +609,7 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         error:
-          error instanceof Error
-            ? error.message
-            : 'A Jornada IA não respondeu agora.',
+          'A Jornada IA não respondeu agora. Tente novamente.',
       },
       { status: 502 },
     );
