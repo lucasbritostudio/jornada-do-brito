@@ -1,4 +1,4 @@
-export type LlmMessage = { role: 'system' | 'user' | 'assistant'; content: string };
+import { getGroqApiKey, getGroqSecretStatus } from './secrets';\n\nexport type LlmMessage = { role: 'system' | 'user' | 'assistant'; content: string };
 
 export type LlmResult = {
   text: string;
@@ -94,28 +94,34 @@ async function callOpenAICompatible(
   }
 }
 
-export function llmStatus() {
-  const groqConfigured = Boolean(process.env.GROQ_API_KEY);
+export async function llmStatus() {
+  const groq = await getGroqSecretStatus();
   const openRouterConfigured = Boolean(process.env.OPENROUTER_API_KEY);
-  const openRouterPrivateDataEnabled = process.env.OPENROUTER_ALLOW_PRIVATE_DATA === 'true';
+  const openRouterPrivateDataEnabled =
+    process.env.OPENROUTER_ALLOW_PRIVATE_DATA === 'true';
 
   return {
-    configured: groqConfigured || (openRouterConfigured && openRouterPrivateDataEnabled),
-    groqConfigured,
+    configured:
+      groq.configured ||
+      (openRouterConfigured && openRouterPrivateDataEnabled),
+    groqConfigured: groq.configured,
+    groqSource: groq.source,
+    groqLast4: groq.last4,
     model: process.env.GROQ_MODEL || 'openai/gpt-oss-20b',
     openRouterConfigured,
     openRouterPrivateDataEnabled,
-    primary: groqConfigured ? 'groq' : 'local',
+    primary: groq.configured ? 'groq' : 'local',
     privacyMode: 'minimum-context',
   };
 }
 
 export async function generateWithFreeLlm(messages: LlmMessage[]): Promise<LlmResult> {
-  if (process.env.GROQ_API_KEY) {
+  const groqApiKey = await getGroqApiKey();
+  if (groqApiKey) {
     const model = process.env.GROQ_MODEL || 'openai/gpt-oss-20b';
     const result = await callOpenAICompatible(
       GROQ_URL,
-      process.env.GROQ_API_KEY,
+      groqApiKey,
       model,
       messages,
       'groq',
