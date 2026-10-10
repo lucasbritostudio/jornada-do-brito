@@ -7,10 +7,11 @@ export function minimizeAiContext(
   context: Record<string, unknown>,
   prompt: string,
 ): Record<string, unknown> {
-  const finance = /finan[cç]|dinheiro|saldo|d[ií]vid|cobr|receb|paga|gasto|despesa|lucro|receita|conta|or[cç]amento|fatura|cart[aã]o|parcel/i.test(prompt);
-  const clients = /cliente|contrat|negocia|or[cç]amento|briefing|propost|cobran[cç]a|projeto|trabalho|atendimento/i.test(prompt);
+  const finance = /finan[cç]|dinheiro|saldo|d[ií]vid|cobr|receb|paga|gasto|despesa|lucro|receita|banc[aá]ri|banco|pix|extrato|or[cç]amento|fatura|cart[aã]o|parcel/i.test(prompt);
+  const clients = /cliente|contrat|negocia|or[cç]amento|briefing|propost|cobran[cç]a|projeto|trabalho|atendimento/i.test(prompt)
+    || (Array.isArray(context.relevantClients) && context.relevantClients.length > 0);
   const study = /estud|aprend|trein|aula|nota|habilidade|cinema|film|v[ií]deo|roteiro|gimbal|composi[cç]|enquadra|c[aâ]mera|grav/i.test(prompt);
-  const planning = /tarefa|meta|plano|agenda|prioridade|prazo|planeja|organiza|pend[eê]ncia/i.test(prompt);
+  const planning = /tarefa|meta|plano|agenda|prioridade|prazo|planeja|organiza|pend[eê]ncia|hoje|amanh[aã]|semana/i.test(prompt);
   const minimal: Record<string, unknown> = {
     contactsCount: context.contactsCount,
     opportunitiesOpen: context.opportunitiesOpen,
