@@ -264,8 +264,16 @@ export async function recordAiFeedback(input: {
     const currentIndex = thread.turns.findIndex(
       (item) => item.id === input.turnId,
     );
+    const previousTurns = thread.turns.slice(0, currentIndex);
+    let lastResolvedIndex = -1;
+    for (let index = previousTurns.length - 1; index >= 0; index -= 1) {
+      if (previousTurns[index].feedback === 'resolved') {
+        lastResolvedIndex = index;
+        break;
+      }
+    }
     const failedBefore = thread.turns
-      .slice(0, currentIndex)
+      .slice(lastResolvedIndex + 1, currentIndex)
       .filter((item) => item.feedback === 'not_resolved');
 
     if (failedBefore.length) {
@@ -307,11 +315,19 @@ export async function recordAiFeedback(input: {
       lessonCreated = true;
     }
 
-    const hasUnresolvedAfter = thread.turns.some(
-      (item, idx) =>
-        idx > currentIndex && item.feedback === 'not_resolved',
-    );
-    thread.status = hasUnresolvedAfter ? 'needs_attention' : 'resolved';
+    let lastResolved = -1;
+    for (let index = thread.turns.length - 1; index >= 0; index -= 1) {
+      if (thread.turns[index].feedback === 'resolved') {
+        lastResolved = index;
+        break;
+      }
+    }
+    const hasOpenFailure = thread.turns
+      .slice(lastResolved + 1)
+      .some((item) => item.feedback === 'not_resolved');
+    thread.status = hasOpenFailure
+      ? 'needs_attention'
+      : 'resolved';
   }
 
   thread.updatedAt = at;
@@ -425,5 +441,31 @@ export async function getAiHistory(threadId: string) {
     status: thread.status,
     messages,
     stats,
+  };
+}
+
+
+export async function getAiLearningOverview() {
+  const index = await getIndex();
+  return {
+    stats: {
+      threads: index.threads.length,
+      resolved: index.threads.filter(
+        (item) => item.status === 'resolved',
+      ).length,
+      needsAttention: index.threads.filter(
+        (item) => item.status === 'needs_attention',
+      ).length,
+      learningCount: index.lessons.length,
+    },
+    recentLessons: index.lessons.slice(0, 5).map((lesson) => ({
+      id: lesson.id,
+      problem: lesson.problem.slice(0, 220),
+      successfulResolution:
+        lesson.successfulResolution.slice(0, 320),
+      failureCount: lesson.failureCount,
+      useCount: lesson.useCount,
+      updatedAt: lesson.updatedAt,
+    })),
   };
 }
