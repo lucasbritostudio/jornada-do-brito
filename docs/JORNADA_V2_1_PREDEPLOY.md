@@ -104,3 +104,20 @@ Foi encontrado um meio de verificar o Blob diretamente pela integração autenti
 - Logs agrupados e erros da Vercel: nenhum erro de runtime no intervalo consultado de 7 dias; a ausência de erros registrados **não comprova** todos os caminhos exercitados.
 
 **Limite da integração nativa**: permite inspecionar metadados da store, mas **não** listar os nomes individuais dos objetos nem ler o conteúdo de seus blobs. Portanto 3 objetos/1.241 bytes NÃO significam ausência de segredos em histórico, não provam exportação/recuperação de backup e não substituem auditoria real do conteúdo. A ferramenta `npm run audit:blob` foi preparada para ambiente que já possua a credencial de forma segura, porém não foi executada. Não houve deploy, preview, limpeza, escrita ou migração de dados. Veredito de prontidão permanece **NÃO PRONTO PARA DEPLOY**.
+
+
+## Segurança do envio à IA — ajuste e comprovação sem rede
+
+- A camada `lib/llm.ts` agora sanitiza mensagens com role=`user` na fronteira de transporte, tanto no envio simples à Groq/OpenRouter quanto no envio com ferramentas. Isso protege o prompt corrente mesmo quando a rota `/api/ai/chat` esquece de aplicar a sanitização. Mensagens de sistema e contexto mantêm a preparação original, evitando truncar involuntariamente o contexto maior.
+- `LlmProviderError` foi ajustado para não depender do TypeScript parameter-property syntax, que o runtime `node --experimental-strip-types` não suporta; a API pública da classe não foi alterada.
+- **2/2 testes novos de privacidade passaram no Node 24** em sandbox isolado, sem qualquer chamada externa. Os testes substituem o `fetch` e capturam apenas dados fictícios. Evidência: `tests/llm-redaction.test.ts` comprova remoção de uma senha falsa e uma chave falsa nos dois transportes.
+- Duas tentativas iniciais desse teste no sandbox isolado não passaram por configuração incompleta do fixture e sintaxe TypeScript sem transformação. O fixture foi corrigido e a sintaxe do código da biblioteca tornou-se compatível, com aprovação 2/2 na execução corrigida; não interpretar falhas anteriores como instabilidade real da integração.
+- O novo teste está no `npm test`, mas **a suíte completa não foi repetida** nesta etapa, em respeito à economia e à orientação de não refazer testes que já passaram. O último build completo aprovado continua anterior às últimas alterações de código, exigindo verificação final apenas antes de qualquer publicação.
+
+## Reprodutibilidade e impedimentos reais
+
+Foi gerado um package-lock em ambiente efêmero Node 24 com `npm install --package-lock-only`, mas a captura automatizada do arquivo através da integração falhou porque o sandbox encerrou antes da transferência. **Nenhum package-lock foi incluído no repositório.** Não repetir o mesmo procedimento ineficiente. O caminho mais econômico é concluir esse artefato diretamente em um clone autorizado com `npm install --package-lock-only`, revisar e salvar o lockfile na branch.
+
+O inventário completo dos 3 objetos do Blob real não pode ser executado deste executor sem uma sessão Vercel CLI autenticada pertencente à Jornada, e não deve receber o token da produção por transferência entre conectores. O procedimento `npm run audit:blob:safe` já foi implementado e isolado por projectId/teamId, sem deploy nem exportação de segredos. A integração oficial disponível confirmou somente os metadados da loja. Essa é uma limitação efetiva, não uma validação concluída.
+
+**Não pronto para publicação** até obter evidência de auditoria dos conteúdos, confirmar restauração e executar smoke tests reais em ambiente isolado sem mensagens ou gravações de clientes. Nenhum deploy realizado.
