@@ -14,7 +14,8 @@
     "backup:blob:safe": "node scripts/run-safe-blob-backup.mjs",
     "backup:verify": "node scripts/verify-blob-backup.mjs",
     "test:backup": "node --test tests/backup-crypto.test.mjs",
-    "test:ai-v21": "node --experimental-strip-types --experimental-test-module-mocks --experimental-loader ./tests/ts-extension-loader.mjs --test tests/ai-context.test.ts tests/llm-redaction.test.ts"
+    "test:ai-v21": "node --experimental-strip-types --experimental-test-module-mocks --experimental-loader ./tests/ts-extension-loader.mjs --test tests/ai-context.test.ts tests/llm-redaction.test.ts",
+    "probe:groq:safe": "node scripts/run-safe-groq-probe.mjs"
   },
   "dependencies": {
     "@vercel/blob": "^2.0.0",
