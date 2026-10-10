@@ -167,7 +167,16 @@ export async function getAuthRecord() {
 }
 
 export async function saveAuthRecord(record: AuthRecord) {
-  await writeJson(AUTH_PATH, record);
+  // Activation must not overwrite an existing activated identity.
+  const current = await readVersionedJson<AuthRecord>(AUTH_PATH);
+  if (current?.value.activated) throw new Error('AUTH_ALREADY_ACTIVATED');
+  await put(AUTH_PATH, JSON.stringify(record, null, 2), {
+    access: 'private',
+    allowOverwrite: Boolean(current),
+    ...(current ? { ifMatch: current.etag } : {}),
+    addRandomSuffix: false,
+    contentType: 'application/json',
+  });
 }
 
 export async function getState(): Promise<WorkspaceState> {
