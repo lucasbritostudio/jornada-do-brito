@@ -1,50 +1,55 @@
 # Jornada do Brito
 
-Sistema pessoal de vida, trabalho e finanças.
+Sistema pessoal e profissional para organizar atendimento, clientes, trabalho, finanças, dívidas, objetivos e evolução.
 
 ## Estado atual
 
-**Fase: fundação técnica / arquitetura.**
+A v1 utilizável está implementada com:
 
-Este repositório foi preparado para receber a aplicação sem antecipar regras de produto ainda não validadas.
+- autenticação própria de primeiro acesso;
+- armazenamento privado;
+- painel Hoje;
+- CRM básico;
+- pipeline e projetos preparados;
+- entradas e saídas;
+- dívidas;
+- objetivos e missões;
+- caixa de entrada do WhatsApp preparada para Cloud API;
+- assistente inteligente local, sem envio de dados a modelo externo;
+- exportação de backup JSON;
+- PWA responsiva para iPhone e PC.
 
-### Princípios
+## Isolamento
 
-- custo inicial: R$ 0;
-- projeto totalmente separado do Chefe da Pizza e de outros sistemas;
-- nenhuma credencial, banco ou serviço externo nesta fase;
-- nenhuma regra de negócio será inventada;
-- decisões de arquitetura e produto devem ser registradas antes da implementação;
-- produção só será criada quando a base estiver validada.
+Este projeto não usa infraestrutura, números, credenciais, bancos ou integrações da Pizzaria São Francisco nem do Chefe da Pizza.
 
-## Deploy inicial
+## Persistência
 
-A raiz contém uma página estática, sem dependências, pronta para um primeiro deploy seguro na Vercel.
+A arquitetura de longo prazo continua preparada para Postgres/Supabase. A v1 operacional usa um repositório de dados abstrato implementado sobre **Vercel Private Blob**, permitindo uso imediato sem depender da criação de outra conta agora.
 
-Ela serve apenas para validar:
-
-1. GitHub → Vercel;
-2. domínio gratuito da Vercel;
-3. build/entrega;
-4. isolamento da infraestrutura.
-
-Depois dessa validação, a aplicação real poderá ser construída sobre a arquitetura aprovada.
-
-## Estrutura
-
-- `index.html` — página inicial temporária;
-- `styles.css` — estilos da página temporária;
-- `docs/ARQUITETURA.md` — limites e decisões atuais;
-- `docs/PROXIMOS_PASSOS.md` — ordem segura de evolução;
-- `.gitignore` — proteção contra arquivos locais e segredos.
+Esse modo é adequado para o uso inicial de uma única pessoa. A camada de dados foi isolada para permitir migração posterior para Postgres sem refazer a interface.
 
 ## Segurança
 
-Nunca versionar:
+- dados em Blob privado;
+- senha armazenada com scrypt + salt;
+- sessão assinada e guardada em cookie HttpOnly/Secure;
+- código de ativação separado do repositório;
+- backup manual completo;
+- nenhuma chave secreta versionada no Git.
 
-- senhas;
-- tokens;
-- chaves de API;
-- arquivos `.env`;
-- dados de clientes;
-- dados financeiros reais.
+## Integrações externas
+
+### WhatsApp Business
+O webhook, normalização de contatos/mensagens e rota de envio estão preparados. A conexão real depende do onboarding oficial da Meta do número atual, com coexistência obrigatória com o app WhatsApp Business no iPhone.
+
+### IA
+A Jornada já possui uma camada inteligente local que analisa prazos, conversas, dívidas, fluxo do mês e objetivos sem enviar dados para terceiros. A arquitetura de agentes especializados e LLM generativo fica pronta para ser ligada quando houver um provedor autorizado.
+
+## Documentação
+
+Veja a pasta `docs/` para arquitetura, dados, UX, IA, WhatsApp, segurança e decisões técnicas.
+
+## Regra permanente
+
+**Não tocar nem depender da infraestrutura da Pizzaria São Francisco ou do Chefe da Pizza.**
