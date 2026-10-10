@@ -7,6 +7,14 @@
  * This script neither exports personal data nor alters any object.
  */
 import { get, list } from '@vercel/blob';
+import { verifyJornadaLink } from './verify-jornada-link.mjs';
+
+try {
+  verifyJornadaLink();
+} catch (error) {
+  console.error(error instanceof Error ? error.message : 'WRONG_PROJECT');
+  process.exit(4);
+}
 
 if (!process.env.BLOB_READ_WRITE_TOKEN) {
   console.error('BLOB_CREDENTIAL_NOT_AVAILABLE');
