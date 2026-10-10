@@ -1,37 +1,83 @@
 import { NextResponse } from 'next/server';
 import { requireAuthenticated } from '@/lib/auth';
-import { getState } from '@/lib/store';
-import { generateWithFreeLlm, llmStatus, type LlmMessage } from '@/lib/llm';
+import { getState, saveState, audit } from '@/lib/store';
+import { buildInsights } from '@/lib/insights';
+import {
+  generateWithFreeLlm,
+  llmStatus,
+  LlmProviderError,
+  type LlmMessage,
+} from '@/lib/llm';
+import { safeSystemPolicy, sanitizeForLlm } from '@/lib/ai-policy';
 
 export const runtime = 'nodejs';
 
 function compactContext(state: Awaited<ReturnType<typeof getState>>) {
   const month = new Date().toISOString().slice(0, 7);
-  const tx = state.transactions.filter((t) => t.status !== 'cancelled' && t.occurredOn.startsWith(month));
-  const income = tx.filter((t) => t.type === 'income').reduce((s, t) => s + t.amountCents, 0);
-  const expense = tx.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amountCents, 0);
+  const tx = state.transactions.filter(
+    (t) => t.status !== 'cancelled' && t.occurredOn.startsWith(month),
+  );
+  const income = tx
+    .filter((t) => t.type === 'income')
+    .reduce((sum, t) => sum + t.amountCents, 0);
+  const expense = tx
+    .filter((t) => t.type === 'expense')
+    .reduce((sum, t) => sum + t.amountCents, 0);
+
   return {
-    summary: {
-      contacts: state.contacts.length,
-      opportunitiesOpen: state.opportunities.filter((o) => !['won', 'lost'].includes(o.stage)).length,
-      projectsActive: state.projects.filter((p) => ['planned', 'active', 'waiting_client', 'review'].includes(p.status)).length,
-      incomeMonthCents: income,
-      expenseMonthCents: expense,
-      activeDebtCents: state.debts.filter((d) => d.status === 'active').reduce((s, d) => s + d.currentBalanceCents, 0),
-      activeGoals: state.goals.filter((g) => g.status === 'active').map((g) => ({
-        title: g.title,
+    contactsCount: state.contacts.length,
+    opportunitiesOpen: state.opportunities.filter(
+      (o) => !['won', 'lost'].includes(o.stage),
+    ).length,
+    projectsActive: state.projects.filter((p) =>
+      ['planned', 'active', 'waiting_client', 'review'].includes(p.status),
+    ).length,
+    month: {
+      incomeCents: income,
+      expenseCents: expense,
+      netCents: income - expense,
+    },
+    activeDebt: {
+      totalCents: state.debts
+        .filter((d) => d.status === 'active')
+        .reduce((sum, d) => sum + d.currentBalanceCents, 0),
+      count: state.debts.filter((d) => d.status === 'active').length,
+    },
+    goals: state.goals
+      .filter((g) => g.status === 'active')
+      .map((g) => ({
+        title: sanitizeForLlm(g.title),
         targetDate: g.targetDate,
         currentValue: g.currentValue,
         targetValue: g.targetValue,
-      })).slice(0, 8),
-      pendingTasks: state.tasks.filter((t) => !['done', 'cancelled'].includes(t.status)).map((t) => ({
-        title: t.title,
+      }))
+      .slice(0, 8),
+    tasks: state.tasks
+      .filter((t) => !['done', 'cancelled'].includes(t.status))
+      .map((t) => ({
+        title: sanitizeForLlm(t.title),
         priority: t.priority,
         dueAt: t.dueAt,
-      })).slice(0, 12),
-      conversationsWaiting: state.conversations.filter((c) => c.status === 'waiting_me' || c.unreadCount > 0).length,
-    },
+      }))
+      .slice(0, 12),
+    conversationsWaiting: state.conversations.filter(
+      (c) => c.status === 'waiting_me' || c.unreadCount > 0,
+    ).length,
   };
+}
+
+function localFallback(state: Awaited<ReturnType<typeof getState>>, reason: string) {
+  const items = buildInsights(state)
+    .slice(0, 4)
+    .map((item) => `• ${item.title}: ${item.detail}`)
+    .join('\n');
+
+  return [
+    'A IA externa não está disponível agora, então usei a análise local da Jornada.',
+    reason,
+    '',
+    items || 'Ainda não há dados suficientes para gerar uma recomendação.',
+  ].join('\n');
 }
 
 export async function GET() {
@@ -47,42 +93,93 @@ export async function POST(req: Request) {
   try {
     await requireAuthenticated();
     const body = await req.json();
-    const prompt = String(body?.message || '').trim();
-    if (!prompt) return NextResponse.json({ error: 'Mensagem vazia.' }, { status: 400 });
-    if (prompt.length > 5000) return NextResponse.json({ error: 'Mensagem muito longa.' }, { status: 413 });
+    const prompt = sanitizeForLlm(String(body?.message || '').trim());
+
+    if (!prompt) {
+      return NextResponse.json({ error: 'Mensagem vazia.' }, { status: 400 });
+    }
 
     const state = await getState();
     const context = compactContext(state);
-    const history = Array.isArray(body?.history)
-      ? body.history.slice(-8).filter((m: any) => ['user','assistant'].includes(m?.role) && typeof m?.content === 'string')
+    const history: LlmMessage[] = Array.isArray(body?.history)
+      ? body.history
+          .slice(-8)
+          .filter(
+            (message: any) =>
+              ['user', 'assistant'].includes(message?.role) &&
+              typeof message?.content === 'string',
+          )
+          .map((message: any) => ({
+            role: message.role,
+            content: sanitizeForLlm(message.content).slice(0, 2000),
+          }))
       : [];
 
     const messages: LlmMessage[] = [
       {
         role: 'system',
         content:
-          'Você é a IA da Jornada do Brito. Seja prática, simples e orientada a ação. ' +
-          'Use somente os dados resumidos fornecidos como fatos. Não invente valores, clientes, dívidas ou prazos. ' +
-          'Não autorize pagamentos, transferências nem envio automático de mensagens. ' +
-          'Quando faltar dado, diga claramente o que falta. Responda em português do Brasil.\n\n' +
-          'CONTEXTO ESTRUTURADO ATUAL:\n' + JSON.stringify(context),
+          safeSystemPolicy() +
+          '\n\nCONTEXTO MÍNIMO ESTRUTURADO DA JORNADA:\n' +
+          JSON.stringify(context),
       },
       ...history,
       { role: 'user', content: prompt },
     ];
 
-    const result = await generateWithFreeLlm(messages);
-    return NextResponse.json(result);
+    try {
+      const result = await generateWithFreeLlm(messages);
+      audit(state, {
+        action: 'ai.chat.completed',
+        collection: 'ai',
+        summary: `${result.provider}/${result.model} · ${result.usage?.totalTokens ?? 0} tokens`,
+      });
+      await saveState(state);
+      return NextResponse.json({ ...result, fallback: false });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'FREE_LLM_NOT_CONFIGURED') {
+        return NextResponse.json({
+          text: localFallback(
+            state,
+            'A estrutura da Groq está pronta; falta apenas a chave da conta gratuita.',
+          ),
+          provider: 'local',
+          model: 'local-rules',
+          fallback: true,
+          code: 'FREE_LLM_NOT_CONFIGURED',
+        });
+      }
+
+      if (error instanceof LlmProviderError) {
+        audit(state, {
+          action: 'ai.chat.fallback',
+          collection: 'ai',
+          summary: `${error.provider} HTTP ${error.status ?? 'erro'}`,
+        });
+        await saveState(state);
+        return NextResponse.json({
+          text: localFallback(
+            state,
+            error.status === 429
+              ? 'O limite gratuito da Groq foi atingido temporariamente.'
+              : 'A Groq não respondeu, sem afetar seus dados.',
+          ),
+          provider: 'local',
+          model: 'local-rules',
+          fallback: true,
+          retryAfter: error.retryAfter,
+        });
+      }
+
+      throw error;
+    }
   } catch (error) {
     if (error instanceof Error && error.message === 'UNAUTHORIZED') {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
-    if (error instanceof Error && error.message === 'FREE_LLM_NOT_CONFIGURED') {
-      return NextResponse.json({
-        error: 'LLM gratuito ainda sem chave configurada.',
-        code: 'FREE_LLM_NOT_CONFIGURED',
-      }, { status: 409 });
-    }
-    return NextResponse.json({ error: 'A IA gratuita não respondeu agora. Tente novamente.' }, { status: 502 });
+    return NextResponse.json(
+      { error: 'A Jornada IA não respondeu agora.' },
+      { status: 502 },
+    );
   }
 }
