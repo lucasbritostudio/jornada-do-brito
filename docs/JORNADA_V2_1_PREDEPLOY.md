@@ -121,3 +121,14 @@ Foi gerado um package-lock em ambiente efêmero Node 24 com `npm install --packa
 O inventário completo dos 3 objetos do Blob real não pode ser executado deste executor sem uma sessão Vercel CLI autenticada pertencente à Jornada, e não deve receber o token da produção por transferência entre conectores. O procedimento `npm run audit:blob:safe` já foi implementado e isolado por projectId/teamId, sem deploy nem exportação de segredos. A integração oficial disponível confirmou somente os metadados da loja. Essa é uma limitação efetiva, não uma validação concluída.
 
 **Não pronto para publicação** até obter evidência de auditoria dos conteúdos, confirmar restauração e executar smoke tests reais em ambiente isolado sem mensagens ou gravações de clientes. Nenhum deploy realizado.
+
+
+## Inventário de credenciais existentes na Vercel (nomes, não valores) — 10/10/2026
+
+A integração oficial Vercel `filter_project_envs(decrypt=false)` confirmou: 8 variáveis cadastradas, dentre elas `BLOB_READ_WRITE_TOKEN`, `JORNADA_SESSION_SECRET`, `JORNADA_BOOTSTRAP_TOKEN`, `GROQ_MODEL`, `AI_PROVIDER` e as configurações de localidade. **Não existem variáveis `WHATSAPP_*` cadastradas neste projeto**. Particularmente faltam `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN` e `WHATSAPP_APP_SECRET`. Esta é uma limitação confirmada da integração externa atual, e a publicação por si só não a resolve.
+
+Foi criado o script `scripts/preflight-environment.mjs` que valida presença dessas variáveis sem imprimir seus valores; requer vínculo do diretório exatamente com a Jornada antes de ler o ambiente. Comando disponível: `npm run preflight:env` (rodar sob `vercel env run -e production -- npm run preflight:env`, no projeto corretamente vinculado). A ausência de WHATSAPP não bloqueia recursos independentes, mas bloqueia concluir testes de envio e recebimento com a API oficial da Meta.
+
+O inventário somente leitura do Blob real e os testes autenticados estão bloqueados pela ausência de uma sessão CLI local já autenticada no projeto, uma vez que o conector atual disponibiliza apenas metadados do armazenamento e não permite transportar segredos ao executor. É proibido contornar a restrição de segurança. Não foi conectado um WhatsApp Business, não foram criados tokens nem enviados contatos/mensagens reais.
+
+Os sandboxes temporários de validação usados nesta fase estão parados e são não persistentes. Nenhuma alteração na produção e nenhum deploy/preview.
