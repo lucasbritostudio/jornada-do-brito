@@ -584,6 +584,49 @@ export async function previewAiMemoryRetention(cutoffIso: string | null) {
 }
 
 /**
+ * Reconstruct a lesson after a failure between saving thread feedback and
+ * updating the index. Never replaces an existing lesson or resets useCount.
+ */
+function restoreLessonsFromThread(index: AiMemoryIndex, thread: AiThread) {
+  let restored = 0;
+  for (let current = 0; current < thread.turns.length; current += 1) {
+    const resolution = thread.turns[current];
+    if (resolution.feedback !== 'resolved') continue;
+    let lastResolved = -1;
+    for (let prev = current - 1; prev >= 0; prev -= 1) {
+      if (thread.turns[prev].feedback === 'resolved') {
+        lastResolved = prev;
+        break;
+      }
+    }
+    const failures = thread.turns
+      .slice(lastResolved + 1, current)
+      .filter((turn) => turn.feedback === 'not_resolved');
+    if (!failures.length) continue;
+    const problem = failures[0].userText;
+    const successfulResolution = resolution.assistantText;
+    const key = lessonKey(problem, successfulResolution);
+    if (index.lessons.some((lesson) =>
+      lessonKey(lesson.problem, lesson.successfulResolution) === key)) continue;
+    const at = resolution.feedbackAt || resolution.updatedAt || now();
+    index.lessons.push({
+      id: crypto.randomUUID(),
+      problem,
+      successfulResolution,
+      failureCount: failures.length,
+      sourceThreadId: thread.id,
+      sourceTurnId: resolution.id,
+      tags: tokenize(failures.map((turn) => turn.userText).join(' ') + ' ' + resolution.userText),
+      createdAt: at,
+      updatedAt: at,
+      useCount: 0,
+    });
+    restored += 1;
+  }
+  return restored;
+}
+
+/**
  * Explicit, owner-initiated maintenance only. Blob writes remain restricted
  * to the *index*, never the underlying conversations, and are CAS-protected.
  * Restores metadata for a conversation committed before an index write failed.
@@ -610,6 +653,7 @@ export async function reconcileAiMemoryIndex() {
   if (cursor) throw new Error('MEMORY_INDEX_RECONCILE_INCOMPLETE');
   const unique = [...new Set(paths)];
   let repaired = 0;
+  let lessonsRestored = 0;
   const threads: AiThread[] = [];
   for (const pathname of unique) {
     const id = pathname.slice(THREAD_PREFIX.length, -'.json'.length);
@@ -619,11 +663,13 @@ export async function reconcileAiMemoryIndex() {
   }
   await mutateIndex((index) => {
     repaired = 0;
+    lessonsRestored = 0;
     for (const thread of threads) {
       const current = index.threads.find((meta) => meta.id === thread.id);
       if (!current || current.turnCount < thread.turns.length) repaired += 1;
       upsertThreadMeta(index, thread);
+      lessonsRestored += restoreLessonsFromThread(index, thread);
     }
   });
-  return { scanned: unique.length, repaired, completed: true };
+  return { scanned: unique.length, repaired, lessonsRestored, completed: true };
 }
