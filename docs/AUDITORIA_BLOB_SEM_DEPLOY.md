@@ -51,3 +51,12 @@ A auditoria não apaga, não modifica e **não cria backup** dos objetos. Backup
 O comando foi **construído e protegido**, mas a leitura dos arquivos privados reais **ainda não foi executada**. A integração da Vercel confirmou loja privada `jornada-do-brito-data`, 3 objetos, 1.241 bytes, somente Jornada vinculada (fotografia dos metadados em 10/10/2026). A auditoria real só estará concluída quando `npm run audit:blob:safe` terminar com exit code 0 em um computador autenticado e os resultados forem verificados.
 
 Não promover `main`, não executar `vercel deploy`, não criar uma rota temporária pública para a auditoria e não publicar enquanto as pendências de segurança e privacidade não forem resolvidas.
+
+
+## Verificação do mecanismo de segurança
+
+O novo teste isolado `node --test tests/blob-audit-guard.test.mjs` foi executado em ambiente local Node 22, **3/3 aprovados**, cobrindo (1) vínculo correto, (2) projeto diferente, (3) equipe diferente ou falta de vínculo. O teste não necessita de rede, chaves, Blob nem Vercel.
+
+Além de conferir o arquivo `.vercel/project.json`, o executor seguro agora fixa `VERCEL_PROJECT_ID`, `VERCEL_ORG_ID` e `--scope` na chamada oficial da Vercel, para evitar que variáveis antigas de outro projeto desviem o comando. Não há `vercel deploy`, `put` ou `del` neste fluxo.
+
+**Estado desta entrega:** scripts e documentação publicados somente na branch. A execução do inventário dos três objetos reais permanece não realizada porque a sessão local autenticada do titular não está disponível ao executor atual. Nenhum dado de produção foi lido além dos metadados já confirmados pela integração oficial. A ferramenta é econômica e pronta para essa execução autorizada; não declarar que a auditoria histórica acabou antes de obter o relatório JSON.
