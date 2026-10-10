@@ -303,3 +303,56 @@ test('reconciliation restores learned lesson when feedback committed but index w
   assert.equal(repeat.lessonsRestored, 0);
   assert.equal((await memory.getAiMemoryStats()).learningCount, 1);
 });
+
+test('aprendizado manual exige confirmação, remove contatos e não duplica lições', async () => {
+  resetStorage();
+  const situation =
+    'Cliente pediu ajuda pelo 11988887777 e contato@exemplo.com para montar um vídeo curto.';
+  const solution =
+    'Expliquei o roteiro de trinta segundos e o cliente aprovou a proposta.';
+  await assert.rejects(
+    () => memory.recordConfirmedClientLesson({ situation, solution, confirmed: false }),
+    /CLIENT_LESSON_NOT_CONFIRMED/,
+  );
+  assert.equal(blobs.has('jornada/ai-memory/index.json'), false);
+  const first = await memory.recordConfirmedClientLesson({
+    situation, solution, confirmed: true,
+  });
+  assert.equal(first.duplicate, false);
+  assert.equal(first.learningCount, 1);
+  const copy = await memory.recordConfirmedClientLesson({
+    situation, solution, confirmed: true,
+  });
+  assert.equal(copy.duplicate, true);
+  assert.equal(copy.lessonId, first.lessonId);
+  assert.equal(copy.learningCount, 1);
+  const raw = blobs.get('jornada/ai-memory/index.json') || '';
+  assert.equal(raw.includes('11988887777'), false);
+  assert.equal(raw.includes('contato@exemplo.com'), false);
+  assert.equal(raw.includes('[TELEFONE_REMOVIDO]'), true);
+  const relevant = await memory.findRelevantAiLessons('montar vídeo curto');
+  assert.equal(relevant.length, 1);
+  assert.match(relevant[0].successfulResolution, /roteiro de trinta segundos/);
+});
+
+test('aprendizado manual não guarda conversas incompletas nem credenciais', async () => {
+  resetStorage();
+  await assert.rejects(
+    () => memory.recordConfirmedClientLesson({
+      situation: 'Oi',
+      solution: 'Tudo bem',
+      confirmed: true,
+    }),
+    /CLIENT_LESSON_TOO_SHORT/,
+  );
+  assert.equal(blobs.size, 0);
+  const saved = await memory.recordConfirmedClientLesson({
+    situation: 'Cliente trouxe link https://exemplo.com/perfil e perguntou sobre gravação.',
+    solution: 'Orientei sem compartilhar senha=segredo12345678 e combinei uma reunião.',
+    confirmed: true,
+  });
+  assert.equal(saved.learningCount, 1);
+  const raw = blobs.get('jornada/ai-memory/index.json') || '';
+  assert.doesNotMatch(raw, /https:\/\/exemplo\.com|segredo12345678/);
+  assert.match(raw, /LINK_REMOVIDO/);
+});
