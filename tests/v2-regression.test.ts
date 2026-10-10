@@ -188,7 +188,7 @@ test('workspace rejeita snapshot obsoleto sem perder gravações anteriores', as
   first.profile.displayName = 'Primeira versão';
   second.profile.displayName = 'Versão obsoleta';
   await store.saveState(first);
-  await assert.rejects(() => store.saveState(second), /already exists/);
+  await assert.rejects(() => store.saveState(second), BlobPreconditionFailedError);
   const persisted = await store.getState();
   assert.equal(persisted.profile.displayName, 'Primeira versão');
 
@@ -225,4 +225,23 @@ test('cofre criptografado rejeita overwrite com versão obsoleta', async () => {
   const raw = blobs.get('jornada/secrets.json') || '';
   assert.equal(raw.includes('gsk_synthetic_key_aabbccddeeff'), false);
   assert.equal(await secrets.getGroqApiKey(), 'gsk_synthetic_key_aabbccddeeff');
+});
+
+test('mutação pura relê o estado após conflito, sem perder alterações', async () => {
+  resetStorage();
+  const updates = await import('../lib/state-mutation');
+  await store.getState();
+  let count = 0;
+  await updates.mutateStateSafely((state) => {
+    count += 1;
+    state.profile.displayName = 'Última alteração';
+    if (count === 1) {
+      const external = store.defaultState();
+      external.profile.displayName = 'Alteração concorrente';
+      blobs.set('jornada/state.json', JSON.stringify(external));
+      etags.set('jornada/state.json', String(++etagSequence));
+    }
+  });
+  assert.equal(count, 2);
+  assert.equal((await store.getState()).profile.displayName, 'Última alteração');
 });
