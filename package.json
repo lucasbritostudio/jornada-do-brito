@@ -6,14 +6,15 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node --experimental-strip-types --experimental-test-module-mocks --experimental-loader ./tests/ts-extension-loader.mjs --test tests/v2-regression.test.ts tests/import-route.test.ts tests/retention-plan.test.ts tests/whatsapp-contract.test.ts tests/blob-audit-guard.test.mjs tests/llm-redaction.test.ts tests/backup-crypto.test.mjs",
+    "test": "node --experimental-strip-types --experimental-test-module-mocks --experimental-loader ./tests/ts-extension-loader.mjs --test tests/v2-regression.test.ts tests/import-route.test.ts tests/retention-plan.test.ts tests/whatsapp-contract.test.ts tests/blob-audit-guard.test.mjs tests/llm-redaction.test.ts tests/backup-crypto.test.mjs tests/ai-context.test.ts",
     "audit:blob": "node scripts/audit-private-blob.mjs",
     "audit:blob:safe": "node scripts/run-safe-blob-audit.mjs",
     "test:blob-audit-guard": "node --test tests/blob-audit-guard.test.mjs",
     "preflight:env": "node scripts/preflight-environment.mjs",
     "backup:blob:safe": "node scripts/run-safe-blob-backup.mjs",
     "backup:verify": "node scripts/verify-blob-backup.mjs",
-    "test:backup": "node --test tests/backup-crypto.test.mjs"
+    "test:backup": "node --test tests/backup-crypto.test.mjs",
+    "test:ai-v21": "node --experimental-strip-types --experimental-test-module-mocks --experimental-loader ./tests/ts-extension-loader.mjs --test tests/ai-context.test.ts tests/llm-redaction.test.ts"
   },
   "dependencies": {
     "@vercel/blob": "^2.0.0",
