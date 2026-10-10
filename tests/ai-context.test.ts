@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { minimizeAiContext } from '../lib/ai-context';
+import { containsNameMention, minimizeAiContext } from '../lib/ai-context';
 
 const context: Record<string, unknown> = {
   contactsCount: 4, opportunitiesOpen: 2, projectsActive: 1,
@@ -48,4 +48,14 @@ test('named client and filmmaking requests retain relevant data only', () => {
   assert.equal('study' in film, true);
   assert.equal('videoMethod' in film, true);
   assert.equal('month' in film, false);
+});
+
+test('client names use word boundaries and accent-insensitive matches', () => {
+  assert.equal(containsNameMention('Me fale sobre Ana', 'Ana'), true);
+  assert.equal(containsNameMention('Me conte sobre banana', 'Ana'), false);
+  assert.equal(containsNameMention('O JOSE respondeu', 'José'), true);
+  assert.equal(containsNameMention('Vamos organizar', ''), false);
+  const contextWithAna = { ...context, relevantClients: [{ name: 'Ana' }] };
+  assert.equal('relevantClients' in minimizeAiContext(contextWithAna, 'Me fale sobre banana'), false);
+  assert.equal('relevantClients' in minimizeAiContext(contextWithAna, 'Me fale sobre Ana'), true);
 });
