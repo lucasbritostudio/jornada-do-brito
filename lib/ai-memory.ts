@@ -1,5 +1,7 @@
-import { get, put } from '@vercel/blob';
+import { get, put, list, BlobPreconditionFailedError } from '@vercel/blob';
 import { sanitizeForLlm } from './ai-policy';
+import { planMemoryRetention } from './memory-retention';
+import { prepareClientLesson } from './client-learning';
 
 const INDEX_PATH = 'jornada/ai-memory/index.json';
 const THREAD_PREFIX = 'jornada/ai-memory/threads/';
@@ -93,11 +95,16 @@ function threadPath(id: string) {
   return `${THREAD_PREFIX}${safeId(id)}.json`;
 }
 
-async function readJson<T>(pathname: string): Promise<T | null> {
+const versions = new WeakMap<object, string | null>();
+
+async function readJson<T extends object>(pathname: string): Promise<T | null> {
   try {
-    const result = await get(pathname, { access: 'private' });
+    const result = await get(pathname, { access: 'private', useCache: false });
     if (!result) return null;
-    return (await new Response(result.stream).json()) as T;
+    if (!result.blob?.etag) throw new Error('BLOB_ETAG_MISSING');
+    const data = (await new Response(result.stream).json()) as T;
+    versions.set(data, result.blob.etag);
+    return data;
   } catch (error) {
     // Ausência do objeto é diferente de falha de rede, autorização ou
     // corrupção. Não converter erro em memória vazia evita perda silenciosa.
@@ -105,10 +112,13 @@ async function readJson<T>(pathname: string): Promise<T | null> {
   }
 }
 
-async function writeJson(pathname: string, value: unknown) {
+async function writeJson(pathname: string, value: object) {
+  if (!versions.has(value)) throw new Error('MEMORY_VERSION_REQUIRED');
+  const etag = versions.get(value);
   await put(pathname, JSON.stringify(value, null, 2), {
     access: 'private',
-    allowOverwrite: true,
+    allowOverwrite: Boolean(etag),
+    ...(etag ? { ifMatch: etag } : {}),
     addRandomSuffix: false,
     contentType: 'application/json',
   });
@@ -117,14 +127,12 @@ async function writeJson(pathname: string, value: unknown) {
 async function getIndex() {
   const stored = await readJson<AiMemoryIndex>(INDEX_PATH);
   if (!stored) {
-    return {
-      ...EMPTY_INDEX,
-      threads: [],
-      lessons: [],
-    };
+    const empty: AiMemoryIndex = { ...EMPTY_INDEX, threads: [], lessons: [] };
+    versions.set(empty, null);
+    return empty;
   }
 
-  return {
+  const normalized: AiMemoryIndex = {
     version: 1 as const,
     threads: Array.isArray(stored.threads)
       ? stored.threads.map((thread) => ({
@@ -156,16 +164,19 @@ async function getIndex() {
       : [],
     updatedAt: String(stored.updatedAt || EMPTY_INDEX.updatedAt),
   };
+  versions.set(normalized, versions.get(stored) ?? null);
+  return normalized;
 }
 
 async function saveIndex(index: AiMemoryIndex) {
   index.updatedAt = now();
-  index.threads = index.threads
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    .slice(0, 500);
-  index.lessons = index.lessons
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    .slice(0, 300);
+  // Never silently drop older memories when an arbitrary display cap is met.
+  // UI endpoints can page, but persistent metadata must stay complete.
+  index.threads.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  index.lessons.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  if (Buffer.byteLength(JSON.stringify(index), 'utf8') > 3_000_000) {
+    throw new Error('MEMORY_INDEX_CAPACITY_REACHED');
+  }
   await writeJson(INDEX_PATH, index);
 }
 
@@ -174,7 +185,7 @@ export async function getAiThread(id: string) {
   const thread = await readJson<AiThread>(threadPath(normalized));
   if (!thread) return null;
 
-  return {
+  const sanitized: AiThread = {
     ...thread,
     title: cleanText(String(thread.title || ''), 90),
     turns: Array.isArray(thread.turns)
@@ -196,6 +207,8 @@ export async function getAiThread(id: string) {
         }))
       : [],
   };
+  versions.set(sanitized, versions.get(thread) ?? null);
+  return sanitized;
 }
 
 function upsertThreadMeta(index: AiMemoryIndex, thread: AiThread) {
@@ -208,8 +221,14 @@ function upsertThreadMeta(index: AiMemoryIndex, thread: AiThread) {
     turnCount: thread.turns.length,
   };
   const idx = index.threads.findIndex((item) => item.id === thread.id);
-  if (idx >= 0) index.threads[idx] = next;
-  else index.threads.unshift(next);
+  // A slower index update may finish after a newer thread write.
+  // Do not move its metadata backwards.
+  if (idx >= 0) {
+    const current = index.threads[idx];
+    if (current.updatedAt > next.updatedAt ||
+        (current.updatedAt === next.updatedAt && current.turnCount > next.turnCount)) return;
+    index.threads[idx] = next;
+  } else index.threads.unshift(next);
 }
 
 function cleanText(value: string, max = 5000) {
@@ -244,6 +263,26 @@ function deriveThreadStatus(thread: AiThread): AiThread['status'] {
     : 'resolved';
 }
 
+// Retry only actual ETag conflicts, never authorization/network/JSON errors.
+function isConcurrencyConflict(error: unknown) {
+  return error instanceof BlobPreconditionFailedError ||
+    (error instanceof Error && /BlobAlreadyExists|already exists/i.test(error.name));
+}
+
+async function mutateIndex<T>(modify: (index: AiMemoryIndex) => T): Promise<{ index: AiMemoryIndex; result: T }> {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const index = await getIndex();
+    const result = modify(index);
+    try {
+      await saveIndex(index);
+      return { index, result };
+    } catch (error) {
+      if (!isConcurrencyConflict(error) || attempt === 5) throw error;
+    }
+  }
+  throw new Error('MEMORY_INDEX_CONFLICT');
+}
+
 export async function recordAiTurn(input: {
   threadId?: string;
   userText: string;
@@ -256,17 +295,6 @@ export async function recordAiTurn(input: {
 }) {
   const id = safeId(input.threadId || crypto.randomUUID());
   const at = now();
-  const existing = await getAiThread(id);
-  const thread: AiThread =
-    existing || {
-      id,
-      title: titleFrom(input.userText),
-      status: 'open',
-      createdAt: at,
-      updatedAt: at,
-      turns: [],
-    };
-
   const turn: AiTurn = {
     id: crypto.randomUUID(),
     userText: cleanText(input.userText),
@@ -274,30 +302,44 @@ export async function recordAiTurn(input: {
     provider: cleanText(input.provider || 'unknown', 80),
     model: cleanText(input.model || 'unknown', 120),
     outcome: input.outcome,
-    actionName: input.actionName
-      ? cleanText(input.actionName, 120)
-      : undefined,
-    errorCode: input.errorCode
-      ? cleanText(input.errorCode, 120)
-      : undefined,
+    actionName: input.actionName ? cleanText(input.actionName, 120) : undefined,
+    errorCode: input.errorCode ? cleanText(input.errorCode, 120) : undefined,
     createdAt: at,
     updatedAt: at,
   };
 
-  thread.turns.push(turn);
-  thread.updatedAt = at;
-
-  const index = await getIndex();
-  upsertThreadMeta(index, thread);
-
-  await writeJson(threadPath(id), thread);
-  await saveIndex(index);
-
-  return {
-    threadId: id,
-    turnId: turn.id,
-    learningCount: index.lessons.length,
-  };
+  let persisted: AiThread | undefined;
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const existing = await getAiThread(id);
+    const thread: AiThread = existing || {
+      id,
+      title: titleFrom(input.userText),
+      status: 'open',
+      createdAt: at,
+      updatedAt: at,
+      turns: [],
+    };
+    if (!existing) versions.set(thread, null);
+    thread.turns.push(turn);
+    thread.updatedAt = at;
+    try {
+      await writeJson(threadPath(id), thread);
+      persisted = thread;
+      break;
+    } catch (error) {
+      if (!isConcurrencyConflict(error) || attempt === 5) throw error;
+    }
+  }
+  if (!persisted) throw new Error('MEMORY_THREAD_CONFLICT');
+  const committedThread = persisted;
+  // The durable thread was already written. An index outage must not tell
+  // the client that the response itself was lost and trigger a duplicate.
+  try {
+    const { index } = await mutateIndex((index) => upsertThreadMeta(index, committedThread));
+    return { threadId: id, turnId: turn.id, learningCount: index.lessons.length, indexPending: false };
+  } catch {
+    return { threadId: id, turnId: turn.id, learningCount: 0, indexPending: true };
+  }
 }
 
 function tokenize(text: string) {
@@ -330,89 +372,121 @@ export async function recordAiFeedback(input: {
   turnId: string;
   feedback: AiFeedback;
 }) {
-  const thread = await getAiThread(input.threadId);
-  if (!thread) throw new Error('Conversa não encontrada.');
-
-  const turn = thread.turns.find((item) => item.id === input.turnId);
-  if (!turn) throw new Error('Resposta não encontrada.');
-
-  const at = now();
-  turn.feedback = input.feedback;
-  turn.feedbackAt = at;
-  turn.updatedAt = at;
-
-  const index = await getIndex();
-  let lessonCreated = false;
-
-  if (input.feedback === 'resolved') {
-    const currentIndex = thread.turns.findIndex(
-      (item) => item.id === input.turnId,
-    );
-    const previousTurns = thread.turns.slice(0, currentIndex);
-    let lastResolvedIndex = -1;
-    for (let index = previousTurns.length - 1; index >= 0; index -= 1) {
-      if (previousTurns[index].feedback === 'resolved') {
-        lastResolvedIndex = index;
-        break;
-      }
+  let persisted: AiThread | undefined;
+  let finalTurn: AiTurn | undefined;
+  let at = now();
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const thread = await getAiThread(input.threadId);
+    if (!thread) throw new Error('Conversa não encontrada.');
+    const turn = thread.turns.find((item) => item.id === input.turnId);
+    if (!turn) throw new Error('Resposta não encontrada.');
+    at = now();
+    turn.feedback = input.feedback;
+    turn.feedbackAt = at;
+    turn.updatedAt = at;
+    thread.status = deriveThreadStatus(thread);
+    thread.updatedAt = at;
+    try {
+      await writeJson(threadPath(thread.id), thread);
+      persisted = thread;
+      finalTurn = turn;
+      break;
+    } catch (error) {
+      if (!isConcurrencyConflict(error) || attempt === 5) throw error;
     }
-    const failedBefore = thread.turns
-      .slice(lastResolvedIndex + 1, currentIndex)
-      .filter((item) => item.feedback === 'not_resolved');
-
-    if (failedBefore.length) {
-      const firstFailure = failedBefore[0];
-      const key = lessonKey(
-        firstFailure.userText,
-        turn.assistantText,
-      );
-      const existing = index.lessons.find(
-        (item) =>
-          lessonKey(item.problem, item.successfulResolution) === key,
-      );
-
-      const lesson: AiLearningLesson = {
-        id: existing?.id || crypto.randomUUID(),
-        problem: firstFailure.userText,
-        successfulResolution: turn.assistantText,
-        failureCount: failedBefore.length,
-        sourceThreadId: thread.id,
-        sourceTurnId: turn.id,
-        tags: tokenize(
-          failedBefore.map((item) => item.userText).join(' ') +
-            ' ' +
-            turn.userText,
-        ),
-        createdAt: existing?.createdAt || at,
-        updatedAt: at,
-        useCount: existing?.useCount || 0,
-      };
-
-      if (existing) {
-        const idx = index.lessons.findIndex(
-          (item) => item.id === existing.id,
-        );
-        index.lessons[idx] = lesson;
-      } else {
-        index.lessons.unshift(lesson);
-      }
-      lessonCreated = true;
-    }
-
   }
-
-  thread.status = deriveThreadStatus(thread);
-  thread.updatedAt = at;
-  upsertThreadMeta(index, thread);
-
-  await writeJson(threadPath(thread.id), thread);
-  await saveIndex(index);
-
+  if (!persisted || !finalTurn) throw new Error('MEMORY_FEEDBACK_CONFLICT');
+  const thread = persisted;
+  const turn = finalTurn;
+  const update = await mutateIndex((index) => {
+    let lessonCreated = false;
+    if (input.feedback === 'resolved') {
+      const currentIndex = thread.turns.findIndex((item) => item.id === input.turnId);
+      const previousTurns = thread.turns.slice(0, currentIndex);
+      let lastResolvedIndex = -1;
+      for (let i = previousTurns.length - 1; i >= 0; i -= 1) {
+        if (previousTurns[i].feedback === 'resolved') {
+          lastResolvedIndex = i;
+          break;
+        }
+      }
+      const failedBefore = thread.turns.slice(lastResolvedIndex + 1, currentIndex)
+        .filter((item) => item.feedback === 'not_resolved');
+      if (failedBefore.length) {
+        const firstFailure = failedBefore[0];
+        const key = lessonKey(firstFailure.userText, turn.assistantText);
+        const existing = index.lessons.find((item) =>
+          lessonKey(item.problem, item.successfulResolution) === key,
+        );
+        const lesson: AiLearningLesson = {
+          id: existing?.id || crypto.randomUUID(),
+          problem: firstFailure.userText,
+          successfulResolution: turn.assistantText,
+          failureCount: failedBefore.length,
+          sourceThreadId: thread.id,
+          sourceTurnId: turn.id,
+          tags: tokenize(failedBefore.map((item) => item.userText).join(' ') + ' ' + turn.userText),
+          createdAt: existing?.createdAt || at,
+          updatedAt: at,
+          useCount: existing?.useCount || 0,
+        };
+        if (existing) {
+          const idx = index.lessons.findIndex((item) => item.id === existing.id);
+          index.lessons[idx] = lesson;
+        } else index.lessons.unshift(lesson);
+        lessonCreated = true;
+      }
+    }
+    upsertThreadMeta(index, thread);
+    return lessonCreated;
+  });
   return {
     feedback: turn.feedback,
     threadStatus: thread.status,
-    lessonCreated,
-    learningCount: index.lessons.length,
+    lessonCreated: update.result,
+    learningCount: update.index.lessons.length,
+  };
+}
+
+/**
+ * Manual training from a confirmed outcome: no WhatsApp API, no raw chat,
+ * no Groq call. This is a private reusable lesson, not model fine-tuning.
+ */
+export async function recordConfirmedClientLesson(input: {
+  situation: string;
+  solution: string;
+  confirmed: boolean;
+}) {
+  if (input.confirmed !== true) throw new Error('CLIENT_LESSON_NOT_CONFIRMED');
+  const { problem, successfulResolution } = prepareClientLesson(
+    input.situation, input.solution,
+  );
+  const key = lessonKey(problem, successfulResolution);
+  const update = await mutateIndex((index) => {
+    const existing = index.lessons.find((lesson) =>
+      lessonKey(lesson.problem, lesson.successfulResolution) === key,
+    );
+    if (existing) return { lessonId: existing.id, duplicate: true };
+
+    const at = now();
+    const id = crypto.randomUUID();
+    index.lessons.unshift({
+      id,
+      problem,
+      successfulResolution,
+      failureCount: 0,
+      sourceThreadId: 'manual-whatsapp',
+      sourceTurnId: 'manual-' + id,
+      tags: tokenize(problem + ' ' + successfulResolution),
+      createdAt: at,
+      updatedAt: at,
+      useCount: 0,
+    });
+    return { lessonId: id, duplicate: false };
+  });
+  return {
+    ...update.result,
+    learningCount: update.index.lessons.length,
   };
 }
 
@@ -442,15 +516,19 @@ export async function findRelevantAiLessons(
 
   if (ranked.length) {
     const used = new Set(ranked.map((item) => item.lesson.id));
-    let changed = false;
-    for (const lesson of index.lessons) {
-      if (used.has(lesson.id)) {
-        lesson.useCount += 1;
-        lesson.updatedAt = now();
-        changed = true;
-      }
+    // Usage metrics must never break chat if another writer updates the index.
+    try {
+      await mutateIndex((fresh) => {
+        for (const lesson of fresh.lessons) {
+          if (used.has(lesson.id)) {
+            lesson.useCount += 1;
+            lesson.updatedAt = now();
+          }
+        }
+      });
+    } catch {
+      // Read-only recommendations still work; the optional counter is best effort.
     }
-    if (changed) await saveIndex(index);
   }
 
   return ranked.map(({ lesson }) => ({
@@ -540,4 +618,101 @@ export async function getAiLearningOverview() {
       updatedAt: lesson.updatedAt,
     })),
   };
+}
+
+/** Read-only audit preview; no retention rule or deletion is applied. */
+export async function previewAiMemoryRetention(cutoffIso: string | null) {
+  const index = await getIndex();
+  return planMemoryRetention(index.threads, index.lessons, cutoffIso);
+}
+
+/**
+ * Reconstruct a lesson after a failure between saving thread feedback and
+ * updating the index. Never replaces an existing lesson or resets useCount.
+ */
+function restoreLessonsFromThread(index: AiMemoryIndex, thread: AiThread) {
+  let restored = 0;
+  for (let current = 0; current < thread.turns.length; current += 1) {
+    const resolution = thread.turns[current];
+    if (resolution.feedback !== 'resolved') continue;
+    let lastResolved = -1;
+    for (let prev = current - 1; prev >= 0; prev -= 1) {
+      if (thread.turns[prev].feedback === 'resolved') {
+        lastResolved = prev;
+        break;
+      }
+    }
+    const failures = thread.turns
+      .slice(lastResolved + 1, current)
+      .filter((turn) => turn.feedback === 'not_resolved');
+    if (!failures.length) continue;
+    const problem = failures[0].userText;
+    const successfulResolution = resolution.assistantText;
+    const key = lessonKey(problem, successfulResolution);
+    if (index.lessons.some((lesson) =>
+      lessonKey(lesson.problem, lesson.successfulResolution) === key)) continue;
+    const at = resolution.feedbackAt || resolution.updatedAt || now();
+    index.lessons.push({
+      id: crypto.randomUUID(),
+      problem,
+      successfulResolution,
+      failureCount: failures.length,
+      sourceThreadId: thread.id,
+      sourceTurnId: resolution.id,
+      tags: tokenize(failures.map((turn) => turn.userText).join(' ') + ' ' + resolution.userText),
+      createdAt: at,
+      updatedAt: at,
+      useCount: 0,
+    });
+    restored += 1;
+  }
+  return restored;
+}
+
+/**
+ * Explicit, owner-initiated maintenance only. Blob writes remain restricted
+ * to the *index*, never the underlying conversations, and are CAS-protected.
+ * Restores metadata for a conversation committed before an index write failed.
+ */
+export async function reconcileAiMemoryIndex() {
+  const paths: string[] = [];
+  let cursor: string | undefined;
+  for (let pageNo = 0; pageNo < 20; pageNo += 1) {
+    const page = await list({
+      prefix: THREAD_PREFIX,
+      limit: 1000,
+      ...(cursor ? { cursor } : {}),
+    });
+    paths.push(...page.blobs
+      .map((blob) => blob.pathname)
+      .filter((path) => /^jornada\/ai-memory\/threads\/[a-zA-Z0-9_-]{8,120}\.json$/.test(path)));
+    if (!page.hasMore) {
+      cursor = undefined;
+      break;
+    }
+    if (!page.cursor) throw new Error('MEMORY_INDEX_RECONCILE_INCOMPLETE');
+    cursor = page.cursor;
+  }
+  if (cursor) throw new Error('MEMORY_INDEX_RECONCILE_INCOMPLETE');
+  const unique = [...new Set(paths)];
+  let repaired = 0;
+  let lessonsRestored = 0;
+  const threads: AiThread[] = [];
+  for (const pathname of unique) {
+    const id = pathname.slice(THREAD_PREFIX.length, -'.json'.length);
+    const thread = await getAiThread(id);
+    if (!thread) throw new Error('MEMORY_INDEX_THREAD_MISSING');
+    threads.push(thread);
+  }
+  await mutateIndex((index) => {
+    repaired = 0;
+    lessonsRestored = 0;
+    for (const thread of threads) {
+      const current = index.threads.find((meta) => meta.id === thread.id);
+      if (!current || current.turnCount < thread.turns.length) repaired += 1;
+      upsertThreadMeta(index, thread);
+      lessonsRestored += restoreLessonsFromThread(index, thread);
+    }
+  });
+  return { scanned: unique.length, repaired, lessonsRestored, completed: true };
 }

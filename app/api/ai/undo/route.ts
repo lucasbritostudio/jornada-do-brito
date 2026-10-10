@@ -3,6 +3,8 @@ import { requireAuthenticated } from '@/lib/auth';
 import { audit, getState, saveState } from '@/lib/store';
 import { applyUndo } from '@/lib/undo';
 
+import { isBlobConflict } from '@/lib/blob-conflict';
+
 export const runtime = 'nodejs';
 
 export async function POST(req: Request) {
@@ -30,6 +32,12 @@ export async function POST(req: Request) {
       message: 'Desfeito. A Jornada voltou ao estado anterior dessa ação.',
     });
   } catch (error) {
+    if (isBlobConflict(error)) {
+      return NextResponse.json(
+        { error: 'Outra alteração foi salva ao mesmo tempo. Atualize e tente novamente.' },
+        { status: 409 },
+      );
+    }
     if (
       error instanceof Error &&
       error.message === 'UNAUTHORIZED'

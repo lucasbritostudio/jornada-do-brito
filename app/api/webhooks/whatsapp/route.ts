@@ -2,6 +2,8 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { getState, saveState, audit } from '@/lib/store';
 import type { Conversation, WorkspaceState } from '@/lib/types';
 import { runWhatsAppAutomation } from '@/lib/whatsapp-automation';
+import { isBlobConflict } from '@/lib/blob-conflict';
+import { mutateStateSafely } from '@/lib/state-mutation';
 
 export const runtime = 'nodejs';
 
@@ -389,39 +391,133 @@ export async function POST(req: Request) {
     return new Response('ok', { status: 200 });
   }
 
-  const state = await getState();
-  const inboundForAutomation: Array<{ conversation: Conversation; contact: WorkspaceState['contacts'][number]; inboundText: string; inboundProviderMessageId?: string }> = [];
+  // Persist incoming event IDs BEFORE any irreversible Meta send.
+  // A failed CAS can safely reprocess the webhook because provider IDs are
+  // deduplicated. Never retry an external send on persistence conflicts.
+  type AutomationItem = {
+    conversationId: string;
+    contactId: string;
+    inboundText: string;
+    inboundProviderMessageId?: string;
+  };
+  let items: AutomationItem[] = [];
+  let saved = false;
 
-  for (const entry of payload.entry || []) {
-    for (const change of entry.changes || []) {
-      const value = change.value || {};
-      const field = String(change.field || '');
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const state = await getState();
+    const inboundForAutomation: AutomationItem[] = [];
 
-      if (field === 'smb_app_state_sync') {
-        handleContactSync(state, value);
-        continue;
+    for (const entry of payload.entry || []) {
+      for (const change of entry.changes || []) {
+        const value = change.value || {};
+        const field = String(change.field || '');
+
+        if (field === 'smb_app_state_sync') {
+          handleContactSync(state, value);
+          continue;
+        }
+        if (field === 'history') {
+          handleHistory(state, value);
+          continue;
+        }
+        if (field === 'smb_message_echoes') {
+          handleMessageEchoes(state, value);
+          continue;
+        }
+        if (field === 'messages') {
+          const parsed = handleInboundMessages(state, value);
+          for (const item of parsed) {
+            inboundForAutomation.push({
+              conversationId: item.conversation.id,
+              contactId: item.contact.id,
+              inboundText: item.inboundText,
+              inboundProviderMessageId: item.inboundProviderMessageId,
+            });
+          }
+        }
       }
+    }
 
-      if (field === 'history') {
-        handleHistory(state, value);
-        continue;
-      }
-
-      if (field === 'smb_message_echoes') {
-        handleMessageEchoes(state, value);
-        continue;
-      }
-
-      if (field === 'messages') {
-        inboundForAutomation.push(...handleInboundMessages(state, value));
-      }
+    try {
+      await saveState(state);
+      items = inboundForAutomation;
+      saved = true;
+      break;
+    } catch (error) {
+      if (!isBlobConflict(error) || attempt === 5) throw error;
     }
   }
 
-  for (const item of inboundForAutomation) {
-    await runWhatsAppAutomation(state, item);
+  if (!saved) return new Response('retry later', { status: 503 });
+
+  // A duplicated webhook will see an already-committed incoming message and
+  // will not schedule another automated reply.
+  for (const item of items) {
+    const state = await getState();
+    const conversation = state.conversations.find(
+      (entry) => entry.id === item.conversationId,
+    );
+    const contact = state.contacts.find(
+      (entry) => entry.id === item.contactId,
+    );
+    if (!conversation || !contact) continue;
+
+    const beforeMessages = new Set(state.messages.map((entry) => entry.id));
+    const beforeInbox = new Set(state.inbox.map((entry) => entry.id));
+    const beforeAudit = new Set(state.audit.map((entry) => entry.id));
+
+    const decision = await runWhatsAppAutomation(state, {
+      conversation,
+      contact,
+      inboundText: item.inboundText,
+      inboundProviderMessageId: item.inboundProviderMessageId,
+    });
+
+    if (decision.kind === 'ignore') continue;
+
+    // The reply may already have been sent through Meta. Merge only the
+    // changed local records into a fresh snapshot; never call Meta again.
+    const addedMessages = state.messages.filter((entry) =>
+      !beforeMessages.has(entry.id),
+    );
+    const addedInbox = state.inbox.filter((entry) =>
+      !beforeInbox.has(entry.id),
+    );
+    const addedAudit = state.audit.filter((entry) =>
+      !beforeAudit.has(entry.id),
+    );
+    await mutateStateSafely((latest) => {
+      for (const message of addedMessages) {
+        const exists = latest.messages.some((entry) =>
+          entry.id === message.id ||
+          Boolean(message.providerMessageId && entry.providerMessageId === message.providerMessageId),
+        );
+        if (!exists) latest.messages.unshift(message);
+      }
+      for (const entry of addedInbox) {
+        if (!latest.inbox.some((current) => current.id === entry.id)) {
+          latest.inbox.unshift(entry);
+        }
+      }
+      for (const entry of addedAudit) {
+        if (!latest.audit.some((current) => current.id === entry.id)) {
+          latest.audit.unshift(entry);
+        }
+      }
+      const currentConversation = latest.conversations.find(
+        (entry) => entry.id === item.conversationId,
+      );
+      if (currentConversation && currentConversation.updatedAt <= conversation.updatedAt) {
+        currentConversation.status = conversation.status;
+        currentConversation.unreadCount = conversation.unreadCount;
+        currentConversation.lastMessageAt = conversation.lastMessageAt;
+        currentConversation.updatedAt = conversation.updatedAt;
+        currentConversation.automationMode = conversation.automationMode;
+        currentConversation.humanTakeoverAt = conversation.humanTakeoverAt;
+        currentConversation.aiResumeAt = conversation.aiResumeAt;
+      }
+    });
   }
 
-  await saveState(state);
   return new Response('ok', { status: 200 });
 }

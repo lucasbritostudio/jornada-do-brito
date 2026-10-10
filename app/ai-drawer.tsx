@@ -54,6 +54,7 @@ export default function AIDrawerV2({
   const [threadId, setThreadId] = useState('');
   const [learningCount, setLearningCount] = useState(0);
   const [feedbackBusy, setFeedbackBusy] = useState('');
+  const [memoryWarning, setMemoryWarning] = useState('');
 
   useEffect(() => {
     fetch('/api/ai/chat')
@@ -105,6 +106,7 @@ export default function AIDrawerV2({
     setPending(null);
     setUndo(null);
     setMsg('');
+    setMemoryWarning('');
   }
 
   async function ask(event: React.FormEvent) {
@@ -149,6 +151,13 @@ export default function AIDrawerV2({
     setLoading(false);
 
     if (response.ok) {
+      if (json.memorySaved === false) {
+        setMemoryWarning('Resposta recebida, mas o histórico não foi salvo. Guarde o texto se for importante.');
+      } else if (json.memoryIndexPending) {
+        setMemoryWarning('Conversa salva. A organização da memória está pendente; não precisa reenviar.');
+      } else {
+        setMemoryWarning('');
+      }
       const finalThreadId = json.threadId || id;
       setThreadId(finalThreadId);
       window.localStorage.setItem(
@@ -230,7 +239,11 @@ export default function AIDrawerV2({
     const json = await response.json();
     setFeedbackBusy('');
 
-    if (!response.ok) return;
+    if (!response.ok) {
+      setMemoryWarning('Não consegui salvar essa avaliação. Tente novamente mais tarde.');
+      return;
+    }
+    setMemoryWarning('');
 
     setHistory((current) =>
       current.map((item) =>
@@ -393,6 +406,12 @@ export default function AIDrawerV2({
         tentativa falhar e outra resolver, seu feedback ajuda a IA
         reaproveitar a solução em casos parecidos.
       </p>
+
+      {memoryWarning && (
+        <p role="status" style={{ color: 'var(--muted)', lineHeight: 1.5 }}>
+          {memoryWarning}
+        </p>
+      )}
 
       {historyLoading ? (
         <div className="empty">Carregando conversa…</div>

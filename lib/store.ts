@@ -130,11 +130,21 @@ export function upgradeState(raw: unknown): WorkspaceState {
   };
 }
 
+const stateVersions = new WeakMap<WorkspaceState, string | null>();
+
+async function readVersionedJson<T>(pathname: string): Promise<{ value: T; etag: string } | null> {
+  // Bypass private Blob CDN cache before conditional writes.
+  const result = await get(pathname, { access: 'private', useCache: false });
+  if (!result) return null;
+  const value = (await new Response(result.stream).json()) as T;
+  if (!result.blob?.etag) throw new Error('BLOB_ETAG_MISSING');
+  return { value, etag: result.blob.etag };
+}
+
 async function readJson<T>(pathname: string): Promise<T | null> {
   try {
-    const result = await get(pathname, { access: 'private' });
-    if (!result) return null;
-    return (await new Response(result.stream).json()) as T;
+    const result = await readVersionedJson<T>(pathname);
+    return result?.value ?? null;
   } catch (error) {
     // Apenas um Blob ausente significa estado ainda não criado. Falhas de
     // rede, autenticação ou JSON corrompido devem interromper a operação;
@@ -143,39 +153,59 @@ async function readJson<T>(pathname: string): Promise<T | null> {
   }
 }
 
-async function writeJson(pathname: string, value: unknown) {
-  await put(pathname, JSON.stringify(value, null, 2), {
-    access: 'private',
-    allowOverwrite: true,
-    contentType: 'application/json',
-    addRandomSuffix: false,
-  });
-}
-
 export async function getAuthRecord() {
   return readJson<AuthRecord>(AUTH_PATH);
 }
 
 export async function saveAuthRecord(record: AuthRecord) {
-  await writeJson(AUTH_PATH, record);
+  // Activation must not overwrite an existing activated identity.
+  const current = await readVersionedJson<AuthRecord>(AUTH_PATH);
+  if (current?.value.activated) throw new Error('AUTH_ALREADY_ACTIVATED');
+  await put(AUTH_PATH, JSON.stringify(record, null, 2), {
+    access: 'private',
+    allowOverwrite: Boolean(current),
+    ...(current ? { ifMatch: current.etag } : {}),
+    addRandomSuffix: false,
+    contentType: 'application/json',
+  });
 }
 
 export async function getState(): Promise<WorkspaceState> {
-  const saved = await readJson<WorkspaceState>(STATE_PATH);
+  const saved = await readVersionedJson<WorkspaceState>(STATE_PATH);
   if (saved) {
-    const upgraded = upgradeState(saved);
-    if (saved.version !== CURRENT_VERSION) {
-      await writeJson(STATE_PATH, upgraded);
-    }
+    const upgraded = upgradeState(saved.value);
+    // Defer migration until a version-checked write; GET is read-only.
+    stateVersions.set(upgraded, saved.etag);
     return upgraded;
   }
-
   const initial = defaultState();
-  await writeJson(STATE_PATH, initial);
-  return initial;
+  // Preserve the original lazy initialization behavior. Create-once avoids
+  // silently replacing a concurrent initializer.
+  try {
+    const created = await put(STATE_PATH, JSON.stringify(initial, null, 2), {
+      access: 'private',
+      allowOverwrite: false,
+      contentType: 'application/json',
+      addRandomSuffix: false,
+    });
+    stateVersions.set(initial, created.etag);
+    return initial;
+  } catch (error) {
+    // Another request might have created the state while we were reading.
+    // Only recover by observing an actual existing state; never swallow a
+    // network, permission or malformed-JSON failure.
+    const existing = await readVersionedJson<WorkspaceState>(STATE_PATH);
+    if (!existing) throw error;
+    const upgraded = upgradeState(existing.value);
+    stateVersions.set(upgraded, existing.etag);
+    return upgraded;
+  }
 }
 
 export async function saveState(input: WorkspaceState) {
+  // Reject stale snapshots across all serverless instances.
+  if (!stateVersions.has(input)) throw new Error('STATE_VERSION_REQUIRED');
+  const etag = stateVersions.get(input);
   const state = upgradeState(input);
   refreshProfessionalPatterns(state);
   const currentTime = Date.now();
@@ -183,7 +213,13 @@ export async function saveState(input: WorkspaceState) {
     .filter((item) => new Date(item.expiresAt).getTime() > currentTime)
     .slice(0, 60);
   state.updatedAt = now();
-  await writeJson(STATE_PATH, state);
+  await put(STATE_PATH, JSON.stringify(state, null, 2), {
+    access: 'private',
+    allowOverwrite: Boolean(etag),
+    ...(etag ? { ifMatch: etag } : {}),
+    contentType: 'application/json',
+    addRandomSuffix: false,
+  });
   return state;
 }
 

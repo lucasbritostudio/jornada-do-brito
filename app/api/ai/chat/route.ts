@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { requireAuthenticated } from '@/lib/auth';
 import { getState, saveState, audit } from '@/lib/store';
 import { buildInsights } from '@/lib/insights';
+import { isBlobConflict } from '@/lib/blob-conflict';
+import { containsNameMention, minimizeAiContext } from '@/lib/ai-context';
 import {
   generateWithJornadaTools,
   llmStatus,
@@ -38,17 +40,19 @@ function clientContext(
   state: Awaited<ReturnType<typeof getState>>,
   prompt: string,
 ) {
-  const lower = prompt.toLocaleLowerCase('pt-BR');
   const named = state.contacts.filter((contact) =>
-    lower.includes(contact.name.toLocaleLowerCase('pt-BR')),
+    containsNameMention(prompt, contact.name),
   );
   const wantsClients = /cliente|trabalho|projeto|negocia|or[cç]amento|briefing|pagamento|aprova[cç][aã]o/i.test(
     prompt,
   );
   if (!named.length && !wantsClients) return [];
 
-  const contacts = named.length ? named : state.contacts.slice(0, 12);
-  return contacts.slice(0, 12).map((contact) => {
+  // A generic question about customer service must not disclose a list of
+  // named people. Include names only for an explicit client lookup or list.
+  const asksForList = /(?:quais|liste|lista|meus|todos|quem)[\\s\\S]{0,35}client|client[es\\s]{0,8}pendente/i.test(prompt);
+  const contacts = named.length ? named : asksForList ? state.contacts.slice(0, 6) : [];
+  return contacts.slice(0, 6).map((contact) => {
     const experiences = state.clientExperiences
       .filter(
         (item) =>
@@ -317,7 +321,7 @@ export async function POST(req: Request) {
     }
 
     const context = {
-      ...compactContext(state, prompt),
+      ...minimizeAiContext(compactContext(state, prompt), prompt),
       priorResolvedCases: priorResolvedCases.map((item) => ({
         problem: sanitizeForLlm(item.problem),
         successfulResolution: sanitizeForLlm(
@@ -392,6 +396,7 @@ export async function POST(req: Request) {
           turnId: memory.turnId,
           learningCount: memory.learningCount,
           memorySaved: true,
+          memoryIndexPending: memory.indexPending,
         });
       } catch {
         return NextResponse.json({
@@ -405,15 +410,12 @@ export async function POST(req: Request) {
     try {
       const result = await generateWithJornadaTools(
         messages,
-        JORNADA_TOOLS,
+        hasExplicitActionIntent(prompt) ? JORNADA_TOOLS : [],
       );
 
-      audit(state, {
-        action: 'ai.chat.completed',
-        collection: 'ai',
-        summary: `${result.provider}/${result.model} · ${result.usage?.totalTokens ?? 0} tokens`,
-      });
-
+      // The private memory thread already records provider, model and
+      // outcome. Avoid a redundant workspace write for every AI answer:
+      // unrelated concurrent edits must never discard a valid response.
       if (result.action) {
         const normalized = normalizeAction(
           result.action.name,
@@ -480,14 +482,8 @@ export async function POST(req: Request) {
           normalized.args,
         );
 
-        audit(state, {
-          action: 'ai.action.proposed',
-          collection: normalized.name,
-          summary: action.summary,
-        });
-
-        await saveState(state);
-
+        // A proposal does not mutate the workspace. Its outcome is stored
+        // in private AI memory, not in the shared mutable state blob.
         return respondWithMemory(
           {
             ...result,
@@ -504,8 +500,6 @@ export async function POST(req: Request) {
           },
         );
       }
-
-      await saveState(state);
 
       return respondWithMemory(
         {
@@ -546,14 +540,8 @@ export async function POST(req: Request) {
       }
 
       if (error instanceof LlmProviderError) {
-        audit(state, {
-          action: 'ai.chat.fallback',
-          collection: 'ai',
-          summary: `${error.provider} HTTP ${error.status ?? 'erro'}`,
-        });
-
-        await saveState(state);
-
+        // Provider errors are kept as fallback turns, avoiding a second
+        // workspace write when a rate limit or connection issue occurs.
         const text = localFallback(
           state,
           error.status === 429
@@ -602,6 +590,12 @@ export async function POST(req: Request) {
       throw error;
     }
   } catch (error) {
+    if (isBlobConflict(error)) {
+      return NextResponse.json(
+        { error: 'Outra atualização foi salva ao mesmo tempo. Atualize e tente novamente.' },
+        { status: 409 },
+      );
+    }
     if (
       error instanceof Error &&
       error.message === 'UNAUTHORIZED'
@@ -615,9 +609,7 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         error:
-          error instanceof Error
-            ? error.message
-            : 'A Jornada IA não respondeu agora.',
+          'A Jornada IA não respondeu agora. Tente novamente.',
       },
       { status: 502 },
     );

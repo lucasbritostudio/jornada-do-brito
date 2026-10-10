@@ -809,15 +809,16 @@ function Work({ state }: { state: WorkspaceState }) {
           {state.contacts.length ? (
             <div className="list">
               {state.contacts.map((contact) => {
-                const experiences =
-                  state.clientExperiences.filter(
-                    (item) =>
-                      item.contactId === contact.id ||
-                      item.clientLabel
-                        .toLocaleLowerCase('pt-BR')
-                        .includes(
-                          contact.name.toLocaleLowerCase('pt-BR'),
-                        ),
+                const experiences = state.clientExperiences
+                  .filter((item) =>
+                    item.contactId === contact.id ||
+                    (!item.contactId &&
+                      item.clientLabel.trim().toLocaleLowerCase('pt-BR') ===
+                      contact.name.trim().toLocaleLowerCase('pt-BR')),
+                  )
+                  .sort((a, b) =>
+                    b.occurredOn.localeCompare(a.occurredOn) ||
+                    b.updatedAt.localeCompare(a.updatedAt),
                   );
                 const last = experiences[0];
 
@@ -842,8 +843,47 @@ function Work({ state }: { state: WorkspaceState }) {
                           className="row-sub"
                           style={{ marginTop: 7 }}
                         >
-                          Aprendizado: {last.learnedRule}
+                          Aprendizado recente: {last.learnedRule}
                         </div>
+                      )}
+                      {experiences.length > 0 && (
+                        <details style={{ marginTop: 12 }}>
+                          <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
+                            Minha evolução com este cliente ({experiences.length})
+                          </summary>
+                          <div className="list" style={{ marginTop: 10 }}>
+                            {experiences.map((entry) => (
+                              <div className="row" key={entry.id}>
+                                <div className="row-main">
+                                  <div className="row-title">
+                                    {entry.occurredOn} · Etapa do relacionamento
+                                  </div>
+                                  <div className="row-sub">{entry.whatHappened}</div>
+                                  {entry.whatWorked && (
+                                    <div className="row-sub">
+                                      <strong>Acerto:</strong> {entry.whatWorked}
+                                    </div>
+                                  )}
+                                  {entry.whatFailed && (
+                                    <div className="row-sub">
+                                      <strong>O que melhorar:</strong> {entry.whatFailed}
+                                    </div>
+                                  )}
+                                  {entry.learnedRule && (
+                                    <div className="row-sub">
+                                      <strong>Regra aprendida:</strong> {entry.learnedRule}
+                                    </div>
+                                  )}
+                                  {entry.nextAction && (
+                                    <div className="row-sub">
+                                      <strong>Próxima ação:</strong> {entry.nextAction}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </details>
                       )}
                     </div>
                     <div style={{ textAlign: 'right' }}>

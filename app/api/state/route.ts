@@ -3,6 +3,8 @@ import { requireAuthenticated } from '@/lib/auth';
 import { getState, saveState, audit } from '@/lib/store';
 import type { WorkspaceState } from '@/lib/types';
 
+import { isBlobConflict } from '@/lib/blob-conflict';
+
 export const runtime = 'nodejs';
 
 const allowed = new Set([
@@ -137,6 +139,12 @@ export async function POST(req: Request) {
       await saveState(state as WorkspaceState),
     );
   } catch (error) {
+    if (isBlobConflict(error)) {
+      return NextResponse.json(
+        { error: 'Outra alteração foi salva ao mesmo tempo. Atualize e tente novamente.' },
+        { status: 409 },
+      );
+    }
     if (error instanceof Error && error.message === 'UNAUTHORIZED') {
       return NextResponse.json(
         { error: 'Não autorizado.' },
