@@ -1,4 +1,4 @@
-import { get, put } from '@vercel/blob';
+import { get, put, BlobPreconditionFailedError } from '@vercel/blob';
 import { sanitizeForLlm } from './ai-policy';
 
 const INDEX_PATH = 'jornada/ai-memory/index.json';
@@ -93,11 +93,16 @@ function threadPath(id: string) {
   return `${THREAD_PREFIX}${safeId(id)}.json`;
 }
 
-async function readJson<T>(pathname: string): Promise<T | null> {
+const versions = new WeakMap<object, string | null>();
+
+async function readJson<T extends object>(pathname: string): Promise<T | null> {
   try {
-    const result = await get(pathname, { access: 'private' });
+    const result = await get(pathname, { access: 'private', useCache: false });
     if (!result) return null;
-    return (await new Response(result.stream).json()) as T;
+    if (!result.blob?.etag) throw new Error('BLOB_ETAG_MISSING');
+    const data = (await new Response(result.stream).json()) as T;
+    versions.set(data, result.blob.etag);
+    return data;
   } catch (error) {
     // Ausência do objeto é diferente de falha de rede, autorização ou
     // corrupção. Não converter erro em memória vazia evita perda silenciosa.
@@ -105,10 +110,13 @@ async function readJson<T>(pathname: string): Promise<T | null> {
   }
 }
 
-async function writeJson(pathname: string, value: unknown) {
+async function writeJson(pathname: string, value: object) {
+  if (!versions.has(value)) throw new Error('MEMORY_VERSION_REQUIRED');
+  const etag = versions.get(value);
   await put(pathname, JSON.stringify(value, null, 2), {
     access: 'private',
-    allowOverwrite: true,
+    allowOverwrite: Boolean(etag),
+    ...(etag ? { ifMatch: etag } : {}),
     addRandomSuffix: false,
     contentType: 'application/json',
   });
@@ -117,14 +125,12 @@ async function writeJson(pathname: string, value: unknown) {
 async function getIndex() {
   const stored = await readJson<AiMemoryIndex>(INDEX_PATH);
   if (!stored) {
-    return {
-      ...EMPTY_INDEX,
-      threads: [],
-      lessons: [],
-    };
+    const empty: AiMemoryIndex = { ...EMPTY_INDEX, threads: [], lessons: [] };
+    versions.set(empty, null);
+    return empty;
   }
 
-  return {
+  const normalized: AiMemoryIndex = {
     version: 1 as const,
     threads: Array.isArray(stored.threads)
       ? stored.threads.map((thread) => ({
@@ -156,6 +162,8 @@ async function getIndex() {
       : [],
     updatedAt: String(stored.updatedAt || EMPTY_INDEX.updatedAt),
   };
+  versions.set(normalized, versions.get(stored) ?? null);
+  return normalized;
 }
 
 async function saveIndex(index: AiMemoryIndex) {
@@ -174,7 +182,7 @@ export async function getAiThread(id: string) {
   const thread = await readJson<AiThread>(threadPath(normalized));
   if (!thread) return null;
 
-  return {
+  const sanitized: AiThread = {
     ...thread,
     title: cleanText(String(thread.title || ''), 90),
     turns: Array.isArray(thread.turns)
@@ -196,6 +204,8 @@ export async function getAiThread(id: string) {
         }))
       : [],
   };
+  versions.set(sanitized, versions.get(thread) ?? null);
+  return sanitized;
 }
 
 function upsertThreadMeta(index: AiMemoryIndex, thread: AiThread) {
@@ -244,6 +254,26 @@ function deriveThreadStatus(thread: AiThread): AiThread['status'] {
     : 'resolved';
 }
 
+// Retry only actual ETag conflicts, never authorization/network/JSON errors.
+function isConcurrencyConflict(error: unknown) {
+  return error instanceof BlobPreconditionFailedError ||
+    (error instanceof Error && /BlobAlreadyExists|already exists/i.test(error.name));
+}
+
+async function mutateIndex<T>(modify: (index: AiMemoryIndex) => T): Promise<{ index: AiMemoryIndex; result: T }> {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const index = await getIndex();
+    const result = modify(index);
+    try {
+      await saveIndex(index);
+      return { index, result };
+    } catch (error) {
+      if (!isConcurrencyConflict(error) || attempt === 5) throw error;
+    }
+  }
+  throw new Error('MEMORY_INDEX_CONFLICT');
+}
+
 export async function recordAiTurn(input: {
   threadId?: string;
   userText: string;
@@ -256,17 +286,6 @@ export async function recordAiTurn(input: {
 }) {
   const id = safeId(input.threadId || crypto.randomUUID());
   const at = now();
-  const existing = await getAiThread(id);
-  const thread: AiThread =
-    existing || {
-      id,
-      title: titleFrom(input.userText),
-      status: 'open',
-      createdAt: at,
-      updatedAt: at,
-      turns: [],
-    };
-
   const turn: AiTurn = {
     id: crypto.randomUUID(),
     userText: cleanText(input.userText),
@@ -274,30 +293,37 @@ export async function recordAiTurn(input: {
     provider: cleanText(input.provider || 'unknown', 80),
     model: cleanText(input.model || 'unknown', 120),
     outcome: input.outcome,
-    actionName: input.actionName
-      ? cleanText(input.actionName, 120)
-      : undefined,
-    errorCode: input.errorCode
-      ? cleanText(input.errorCode, 120)
-      : undefined,
+    actionName: input.actionName ? cleanText(input.actionName, 120) : undefined,
+    errorCode: input.errorCode ? cleanText(input.errorCode, 120) : undefined,
     createdAt: at,
     updatedAt: at,
   };
 
-  thread.turns.push(turn);
-  thread.updatedAt = at;
-
-  const index = await getIndex();
-  upsertThreadMeta(index, thread);
-
-  await writeJson(threadPath(id), thread);
-  await saveIndex(index);
-
-  return {
-    threadId: id,
-    turnId: turn.id,
-    learningCount: index.lessons.length,
-  };
+  let persisted: AiThread | undefined;
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const existing = await getAiThread(id);
+    const thread: AiThread = existing || {
+      id,
+      title: titleFrom(input.userText),
+      status: 'open',
+      createdAt: at,
+      updatedAt: at,
+      turns: [],
+    };
+    if (!existing) versions.set(thread, null);
+    thread.turns.push(turn);
+    thread.updatedAt = at;
+    try {
+      await writeJson(threadPath(id), thread);
+      persisted = thread;
+      break;
+    } catch (error) {
+      if (!isConcurrencyConflict(error) || attempt === 5) throw error;
+    }
+  }
+  if (!persisted) throw new Error('MEMORY_THREAD_CONFLICT');
+  const { index } = await mutateIndex((index) => upsertThreadMeta(index, persisted));
+  return { threadId: id, turnId: turn.id, learningCount: index.lessons.length };
 }
 
 function tokenize(text: string) {
@@ -330,89 +356,79 @@ export async function recordAiFeedback(input: {
   turnId: string;
   feedback: AiFeedback;
 }) {
-  const thread = await getAiThread(input.threadId);
-  if (!thread) throw new Error('Conversa não encontrada.');
-
-  const turn = thread.turns.find((item) => item.id === input.turnId);
-  if (!turn) throw new Error('Resposta não encontrada.');
-
-  const at = now();
-  turn.feedback = input.feedback;
-  turn.feedbackAt = at;
-  turn.updatedAt = at;
-
-  const index = await getIndex();
-  let lessonCreated = false;
-
-  if (input.feedback === 'resolved') {
-    const currentIndex = thread.turns.findIndex(
-      (item) => item.id === input.turnId,
-    );
-    const previousTurns = thread.turns.slice(0, currentIndex);
-    let lastResolvedIndex = -1;
-    for (let index = previousTurns.length - 1; index >= 0; index -= 1) {
-      if (previousTurns[index].feedback === 'resolved') {
-        lastResolvedIndex = index;
-        break;
-      }
+  let persisted: AiThread | undefined;
+  let finalTurn: AiTurn | undefined;
+  let at = now();
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const thread = await getAiThread(input.threadId);
+    if (!thread) throw new Error('Conversa não encontrada.');
+    const turn = thread.turns.find((item) => item.id === input.turnId);
+    if (!turn) throw new Error('Resposta não encontrada.');
+    at = now();
+    turn.feedback = input.feedback;
+    turn.feedbackAt = at;
+    turn.updatedAt = at;
+    thread.status = deriveThreadStatus(thread);
+    thread.updatedAt = at;
+    try {
+      await writeJson(threadPath(thread.id), thread);
+      persisted = thread;
+      finalTurn = turn;
+      break;
+    } catch (error) {
+      if (!isConcurrencyConflict(error) || attempt === 5) throw error;
     }
-    const failedBefore = thread.turns
-      .slice(lastResolvedIndex + 1, currentIndex)
-      .filter((item) => item.feedback === 'not_resolved');
-
-    if (failedBefore.length) {
-      const firstFailure = failedBefore[0];
-      const key = lessonKey(
-        firstFailure.userText,
-        turn.assistantText,
-      );
-      const existing = index.lessons.find(
-        (item) =>
-          lessonKey(item.problem, item.successfulResolution) === key,
-      );
-
-      const lesson: AiLearningLesson = {
-        id: existing?.id || crypto.randomUUID(),
-        problem: firstFailure.userText,
-        successfulResolution: turn.assistantText,
-        failureCount: failedBefore.length,
-        sourceThreadId: thread.id,
-        sourceTurnId: turn.id,
-        tags: tokenize(
-          failedBefore.map((item) => item.userText).join(' ') +
-            ' ' +
-            turn.userText,
-        ),
-        createdAt: existing?.createdAt || at,
-        updatedAt: at,
-        useCount: existing?.useCount || 0,
-      };
-
-      if (existing) {
-        const idx = index.lessons.findIndex(
-          (item) => item.id === existing.id,
-        );
-        index.lessons[idx] = lesson;
-      } else {
-        index.lessons.unshift(lesson);
-      }
-      lessonCreated = true;
-    }
-
   }
-
-  thread.status = deriveThreadStatus(thread);
-  thread.updatedAt = at;
-  upsertThreadMeta(index, thread);
-
-  await writeJson(threadPath(thread.id), thread);
-  await saveIndex(index);
-
+  if (!persisted || !finalTurn) throw new Error('MEMORY_FEEDBACK_CONFLICT');
+  const thread = persisted;
+  const turn = finalTurn;
+  const update = await mutateIndex((index) => {
+    let lessonCreated = false;
+    if (input.feedback === 'resolved') {
+      const currentIndex = thread.turns.findIndex((item) => item.id === input.turnId);
+      const previousTurns = thread.turns.slice(0, currentIndex);
+      let lastResolvedIndex = -1;
+      for (let i = previousTurns.length - 1; i >= 0; i -= 1) {
+        if (previousTurns[i].feedback === 'resolved') {
+          lastResolvedIndex = i;
+          break;
+        }
+      }
+      const failedBefore = thread.turns.slice(lastResolvedIndex + 1, currentIndex)
+        .filter((item) => item.feedback === 'not_resolved');
+      if (failedBefore.length) {
+        const firstFailure = failedBefore[0];
+        const key = lessonKey(firstFailure.userText, turn.assistantText);
+        const existing = index.lessons.find((item) =>
+          lessonKey(item.problem, item.successfulResolution) === key,
+        );
+        const lesson: AiLearningLesson = {
+          id: existing?.id || crypto.randomUUID(),
+          problem: firstFailure.userText,
+          successfulResolution: turn.assistantText,
+          failureCount: failedBefore.length,
+          sourceThreadId: thread.id,
+          sourceTurnId: turn.id,
+          tags: tokenize(failedBefore.map((item) => item.userText).join(' ') + ' ' + turn.userText),
+          createdAt: existing?.createdAt || at,
+          updatedAt: at,
+          useCount: existing?.useCount || 0,
+        };
+        if (existing) {
+          const idx = index.lessons.findIndex((item) => item.id === existing.id);
+          index.lessons[idx] = lesson;
+        } else index.lessons.unshift(lesson);
+        lessonCreated = true;
+      }
+    }
+    upsertThreadMeta(index, thread);
+    return lessonCreated;
+  });
   return {
     feedback: turn.feedback,
     threadStatus: thread.status,
-    lessonCreated,
-    learningCount: index.lessons.length,
+    lessonCreated: update.result,
+    learningCount: update.index.lessons.length,
   };
 }
 
@@ -442,15 +458,19 @@ export async function findRelevantAiLessons(
 
   if (ranked.length) {
     const used = new Set(ranked.map((item) => item.lesson.id));
-    let changed = false;
-    for (const lesson of index.lessons) {
-      if (used.has(lesson.id)) {
-        lesson.useCount += 1;
-        lesson.updatedAt = now();
-        changed = true;
-      }
+    // Usage metrics must never break chat if another writer updates the index.
+    try {
+      await mutateIndex((fresh) => {
+        for (const lesson of fresh.lessons) {
+          if (used.has(lesson.id)) {
+            lesson.useCount += 1;
+            lesson.updatedAt = now();
+          }
+        }
+      });
+    } catch {
+      // Read-only recommendations still work; the optional counter is best effort.
     }
-    if (changed) await saveIndex(index);
   }
 
   return ranked.map(({ lesson }) => ({
