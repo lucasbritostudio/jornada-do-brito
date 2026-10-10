@@ -87,3 +87,12 @@ O script informou `GROQ_DIAGNOSTIC_EXIT=2`. Portanto, a tentativa **não chegou 
 **Caminho autorizado alternativo, sem deploy:** abrir o sistema Jornada já hospedado em `https://jornada-do-brito.vercel.app`, entrar na conta e consultar em **Configurações → Jornada IA · Groq Free** o status de conexão. Essa tela e a rota autenticada `GET /api/settings/groq` já existem na `main` publicada, e podem consultar o cofre com as credenciais no próprio runtime Vercel sem expô-las ao computador ou ao chat. Se o cartão disser "Ativa", um teste sintético pelo chat do próprio sistema validará conectividade (não confundir a versão publicada com a nova branch); se disser "Pendente", será necessário configurar uma chave legítima pelo painel oficial da Jornada/Groq. Não digitar chaves no chat nem abrir arquivos locais de credenciais.
 
 **Ainda sem teste real de Groq aprovado; sem deploy, preview ou alteração de dados.**
+
+
+## EVIDÊNCIA VISUAL AUTENTICADA DO SISTEMA JÁ PUBLICADO — 10/10/2026
+
+O proprietário apresentou captura de tela da página **Configurações** em `jornada-do-brito.vercel.app`, com sessão autenticada. Na seção **Jornada IA · Groq Free**, o sistema publicado mostra **"Groq conectada"**, indicador verde **"Ativa"**, modelo **`openai/gpt-oss-20b`** e opção de remover a chave armazenada. Na mesma tela, **Armazenamento privado: Ativo** e **WhatsApp Business: Pendente**.
+
+**Decisão operacional permanente:** a chave Groq **já está cadastrada e reconhecida como configurada pelo sistema publicado**. Não solicitar nova chave, não repetir a verificação de conexão visual e **não repetir o diagnóstico local `probe:groq:safe`** que retornou `KEY_UNAVAILABLE/BLOB_ENV_NOT_AVAILABLE`: este último refletia apenas a ausência da credencial Blob no PowerShell, não um defeito no servidor ou na Groq. Não remover/trocar a chave existente. A prova desta etapa é a captura fornecida pelo proprietário, sem leitura da chave.
+
+**Limite da evidência:** selo "Ativa" comprova reconhecimento/descriptografia da credencial pelo backend de produção que serviu a página, **não comprova uma resposta real atualizada da API Groq, uso no plano gratuito, nem valida a versão nova em branch (não publicada)**. Para validar inferência de ponta a ponta, usar um único teste controlado quando necessário, sem voltar a verificar cadastro de chave. Nenhum deploy, preview ou alteração de dados foi autorizado/feito nesta anotação.
