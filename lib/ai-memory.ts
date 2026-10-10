@@ -218,8 +218,14 @@ function upsertThreadMeta(index: AiMemoryIndex, thread: AiThread) {
     turnCount: thread.turns.length,
   };
   const idx = index.threads.findIndex((item) => item.id === thread.id);
-  if (idx >= 0) index.threads[idx] = next;
-  else index.threads.unshift(next);
+  // A slower index update may finish after a newer thread write.
+  // Do not move its metadata backwards.
+  if (idx >= 0) {
+    const current = index.threads[idx];
+    if (current.updatedAt > next.updatedAt ||
+        (current.updatedAt === next.updatedAt && current.turnCount > next.turnCount)) return;
+    index.threads[idx] = next;
+  } else index.threads.unshift(next);
 }
 
 function cleanText(value: string, max = 5000) {
