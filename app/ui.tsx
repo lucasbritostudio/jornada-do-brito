@@ -13,6 +13,7 @@ import {
 } from '@/lib/professional-method';
 import GroqSettings from './groq-settings';
 import AIDrawerV2 from './ai-drawer';
+import WhatsAppSettingsCard from './whatsapp-settings';
 
 type Tab =
   | 'today'
@@ -1934,40 +1935,7 @@ function Settings({ state }: { state: WorkspaceState }) {
           </div>
         </div>
 
-        <div className="card span-6">
-          <h3>WhatsApp</h3>
-          <div className="row">
-            <div>
-              <div className="row-title">
-                WhatsApp Business + Cloud API
-              </div>
-              <div className="row-sub">
-                Coexistência, histórico, contatos e tomada humana
-                preparados.
-              </div>
-            </div>
-            <span className="badge warn">
-              Aguardando Meta
-            </span>
-          </div>
-
-          <div className="row">
-            <div>
-              <div className="row-title">
-                Resposta automática
-              </div>
-              <div className="row-sub">
-                Nasce desligada e só será ligada depois do teste
-                real.
-              </div>
-            </div>
-            <span className="badge">
-              {state.settings.whatsappAutomation.enabled
-                ? 'Ligada'
-                : 'Desligada'}
-            </span>
-          </div>
-        </div>
+        <WhatsAppSettingsCard />
 
         <GroqSettings />
 
