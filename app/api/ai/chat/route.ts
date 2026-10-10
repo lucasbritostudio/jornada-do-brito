@@ -3,14 +3,19 @@ import { requireAuthenticated } from '@/lib/auth';
 import { getState, saveState, audit } from '@/lib/store';
 import { buildInsights } from '@/lib/insights';
 import {
-  generateWithFreeLlm,
   generateWithJornadaTools,
   llmStatus,
   LlmProviderError,
   type LlmMessage,
 } from '@/lib/llm';
 import { safeSystemPolicy, sanitizeForLlm } from '@/lib/ai-policy';
-import { JORNADA_TOOLS, createActionProposal } from '@/lib/ai-actions';
+import {
+  JORNADA_TOOLS,
+  createActionProposal,
+  createUndoToken,
+  executeAction,
+  normalizeAction,
+} from '@/lib/ai-actions';
 
 export const runtime = 'nodejs';
 
@@ -40,11 +45,30 @@ function compactContext(state: Awaited<ReturnType<typeof getState>>) {
       netCents: income - expense,
     },
     activeDebt: {
-      totalCents: state.debts
-        .filter((d) => d.status === 'active')
+      structuralTotalCents: state.debts
+        .filter((d) => d.status === 'active' && d.structural !== false)
         .reduce((sum, d) => sum + d.currentBalanceCents, 0),
       count: state.debts.filter((d) => d.status === 'active').length,
     },
+    receivables: state.receivables
+      .filter((item) => item.status === 'pending')
+      .slice(0, 10)
+      .map((item) => ({
+        title: sanitizeForLlm(item.title),
+        amountCents: item.amountCents,
+        certainty: item.certainty,
+        expectedOn: item.expectedOn,
+        expectedWindow: item.expectedWindow,
+      })),
+    obligations: state.obligations
+      .filter((item) => item.status === 'planned' || item.status === 'review')
+      .slice(0, 10)
+      .map((item) => ({
+        title: sanitizeForLlm(item.title),
+        amountCents: item.amountCents,
+        dueDate: item.dueDate,
+        status: item.status,
+      })),
     goals: state.goals
       .filter((g) => g.status === 'active')
       .map((g) => ({
@@ -62,6 +86,33 @@ function compactContext(state: Awaited<ReturnType<typeof getState>>) {
         dueAt: t.dueAt,
       }))
       .slice(0, 12),
+    study: {
+      areas: state.studyAreas.slice(0, 10).map((area) => ({
+        label: sanitizeForLlm(area.label),
+        currentScore: area.currentScore,
+        targetScore: area.targetScore,
+        status: area.status,
+      })),
+      lastEvents: state.studyEvents.slice(0, 5).map((event) => ({
+        skill: sanitizeForLlm(event.skill),
+        score: event.score,
+        scoreAfter: event.scoreAfter,
+        take: event.take,
+        occurredOn: event.occurredOn,
+      })),
+    },
+    recentClientLearning: state.clientExperiences.slice(0, 5).map((item) => ({
+      client: sanitizeForLlm(item.clientLabel),
+      learnedRule: item.learnedRule
+        ? sanitizeForLlm(item.learnedRule)
+        : undefined,
+      nextAction: item.nextAction
+        ? sanitizeForLlm(item.nextAction)
+        : undefined,
+    })),
+    inboxPending: state.inbox.filter(
+      (item) => item.status === 'new' || item.status === 'needs_review',
+    ).length,
     conversationsWaiting: state.conversations.filter(
       (c) => c.status === 'waiting_me' || c.unreadCount > 0,
     ).length,
@@ -136,20 +187,64 @@ export async function POST(req: Request) {
         collection: 'ai',
         summary: `${result.provider}/${result.model} · ${result.usage?.totalTokens ?? 0} tokens`,
       });
-      let action;
+
       if (result.action) {
-        action = createActionProposal(result.action.name, result.action.args);
+        const normalized = normalizeAction(
+          result.action.name,
+          result.action.args,
+        );
+
+        if (state.settings.ai.autoSaveLowRiskExplicitCommands) {
+          const executed = executeAction(state, normalized);
+          const undoToken = createUndoToken(
+            executed.collection,
+            executed.entityId,
+            state.settings.ai.undoWindowMinutes,
+          );
+
+          audit(state, {
+            action: 'ai.action.executed',
+            collection: executed.collection,
+            recordId: executed.entityId,
+            summary: executed.message,
+          });
+          await saveState(state);
+
+          return NextResponse.json({
+            ...result,
+            action: undefined,
+            executed: {
+              name: normalized.name,
+              message: executed.message,
+              undoToken,
+              undoMinutes: state.settings.ai.undoWindowMinutes,
+            },
+            text: executed.message,
+            fallback: false,
+          });
+        }
+
+        const action = createActionProposal(
+          normalized.name,
+          normalized.args,
+        );
         audit(state, {
           action: 'ai.action.proposed',
-          collection: result.action.name,
+          collection: normalized.name,
           summary: action.summary,
         });
+        await saveState(state);
+        return NextResponse.json({
+          ...result,
+          action,
+          text: 'Preparei um registro. Confira abaixo antes de salvar.',
+          fallback: false,
+        });
       }
+
       await saveState(state);
       return NextResponse.json({
         ...result,
-        action,
-        text: action ? 'Preparei um registro. Confira abaixo antes de salvar.' : result.text,
         fallback: false,
       });
     } catch (error) {
@@ -194,7 +289,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
     return NextResponse.json(
-      { error: 'A Jornada IA não respondeu agora.' },
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : 'A Jornada IA não respondeu agora.',
+      },
       { status: 502 },
     );
   }

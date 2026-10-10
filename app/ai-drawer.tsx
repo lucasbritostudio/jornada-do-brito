@@ -2,12 +2,19 @@
 import { useEffect, useState } from 'react';
 
 type ChatMessage = { role: 'user' | 'assistant'; content: string };
+
 type PendingAction = {
   token: string;
   name: string;
   title: string;
   summary: string;
   details?: string[];
+};
+
+type UndoState = {
+  token: string;
+  minutes?: number;
+  message: string;
 };
 
 export default function AIDrawerV2({
@@ -24,6 +31,7 @@ export default function AIDrawerV2({
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<'checking' | 'groq' | 'local'>('checking');
   const [pending, setPending] = useState<PendingAction | null>(null);
+  const [undo, setUndo] = useState<UndoState | null>(null);
 
   useEffect(() => {
     fetch('/api/ai/chat')
@@ -41,6 +49,7 @@ export default function AIDrawerV2({
     setHistory([...previous, { role: 'user', content: prompt }]);
     setMsg('');
     setLoading(true);
+    setUndo(null);
 
     const response = await fetch('/api/ai/chat', {
       method: 'POST',
@@ -55,9 +64,23 @@ export default function AIDrawerV2({
         ...h,
         {
           role: 'assistant',
-          content: json.text || (json.action ? 'Preparei uma ação para sua confirmação.' : 'Pronto.'),
+          content:
+            json.text ||
+            (json.action
+              ? 'Preparei uma ação para sua confirmação.'
+              : 'Pronto.'),
         },
       ]);
+
+      if (json.executed?.undoToken) {
+        setUndo({
+          token: json.executed.undoToken,
+          minutes: json.executed.undoMinutes,
+          message: json.executed.message || json.text || 'Registro salvo.',
+        });
+        await onExecuted();
+      }
+
       if (json.action) setPending(json.action);
       setStatus(json.provider === 'groq' ? 'groq' : 'local');
       return;
@@ -65,7 +88,10 @@ export default function AIDrawerV2({
 
     setHistory((h) => [
       ...h,
-      { role: 'assistant', content: json.error || 'Não consegui responder agora.' },
+      {
+        role: 'assistant',
+        content: json.error || 'Não consegui responder agora.',
+      },
     ]);
   }
 
@@ -81,13 +107,19 @@ export default function AIDrawerV2({
     setLoading(false);
 
     if (response.ok) {
-      setHistory((h) => [...h, { role: 'assistant', content: json.message }]);
+      setHistory((h) => [
+        ...h,
+        { role: 'assistant', content: json.message },
+      ]);
       setPending(null);
       await onExecuted();
     } else {
       setHistory((h) => [
         ...h,
-        { role: 'assistant', content: json.error || 'Não foi possível executar.' },
+        {
+          role: 'assistant',
+          content: json.error || 'Não foi possível executar.',
+        },
       ]);
     }
   }
@@ -95,9 +127,42 @@ export default function AIDrawerV2({
   function cancelAction() {
     setHistory((h) => [
       ...h,
-      { role: 'assistant', content: 'Ação cancelada. Nenhum dado foi alterado.' },
+      {
+        role: 'assistant',
+        content: 'Ação cancelada. Nenhum dado foi alterado.',
+      },
     ]);
     setPending(null);
+  }
+
+  async function undoLast() {
+    if (!undo || loading) return;
+    setLoading(true);
+    const response = await fetch('/api/ai/undo', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: undo.token }),
+    });
+    const json = await response.json();
+    setLoading(false);
+
+    if (response.ok) {
+      setHistory((h) => [
+        ...h,
+        { role: 'assistant', content: json.message },
+      ]);
+      setUndo(null);
+      await onExecuted();
+      return;
+    }
+
+    setHistory((h) => [
+      ...h,
+      {
+        role: 'assistant',
+        content: json.error || 'Não foi possível desfazer.',
+      },
+    ]);
   }
 
   return (
@@ -105,15 +170,23 @@ export default function AIDrawerV2({
       <div className="modal-head">
         <div>
           <div className="ai-label">
-            Jornada IA · {status === 'groq' ? 'Groq Free ativo' : status === 'local' ? 'modo local' : 'verificando'}
+            Jornada IA ·{' '}
+            {status === 'groq'
+              ? 'Groq Free ativo'
+              : status === 'local'
+                ? 'modo local'
+                : 'verificando'}
           </div>
           <h2>Seu copiloto.</h2>
         </div>
-        <button className="close" onClick={close}>×</button>
+        <button className="close" onClick={close}>
+          ×
+        </button>
       </div>
 
       <p style={{ color: 'var(--muted)', lineHeight: 1.6 }}>
-        Eu analiso sua Jornada e também posso preparar registros. Nada é gravado sem você confirmar.
+        Quando você manda registrar algo claro e de baixo risco, eu salvo
+        direto. Se eu estiver em dúvida, pergunto antes.
       </p>
 
       {history.length ? (
@@ -143,19 +216,56 @@ export default function AIDrawerV2({
         </div>
       )}
 
+      {undo && (
+        <div
+          className="card"
+          style={{ marginTop: 16, borderColor: '#73804d' }}
+        >
+          <div className="ai-label">Salvo automaticamente</div>
+          <p style={{ color: 'var(--text)', lineHeight: 1.5 }}>
+            {undo.message}
+          </p>
+          <button
+            className="btn secondary small"
+            onClick={undoLast}
+            disabled={loading}
+          >
+            {loading ? 'Desfazendo…' : 'Desfazer'}
+          </button>
+          <div className="row-sub" style={{ marginTop: 8 }}>
+            {undo.minutes
+              ? `Disponível por cerca de ${undo.minutes} minutos.`
+              : 'Disponível por tempo limitado.'}
+          </div>
+        </div>
+      )}
+
       {pending && (
-        <div className="card" style={{ marginTop: 16, borderColor: '#73804d' }}>
+        <div
+          className="card"
+          style={{ marginTop: 16, borderColor: '#73804d' }}
+        >
           <div className="ai-label">Aguardando sua confirmação</div>
           <h3 style={{ marginTop: 8 }}>{pending.title}</h3>
-          <p style={{ color: 'var(--text)', lineHeight: 1.5 }}>{pending.summary}</p>
+          <p style={{ color: 'var(--text)', lineHeight: 1.5 }}>
+            {pending.summary}
+          </p>
           {!!pending.details?.length && (
             <div className="row-sub">{pending.details.join(' · ')}</div>
           )}
           <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-            <button className="btn" onClick={confirmAction} disabled={loading}>
+            <button
+              className="btn"
+              onClick={confirmAction}
+              disabled={loading}
+            >
               {loading ? 'Salvando…' : 'Confirmar'}
             </button>
-            <button className="btn secondary" onClick={cancelAction} disabled={loading}>
+            <button
+              className="btn secondary"
+              onClick={cancelAction}
+              disabled={loading}
+            >
               Cancelar
             </button>
           </div>
@@ -165,7 +275,11 @@ export default function AIDrawerV2({
       <form onSubmit={ask} style={{ marginTop: 18 }}>
         <textarea
           className="textarea"
-          placeholder={pending ? 'Confirme ou cancele a ação acima.' : 'Ex.: Registre um gasto de R$ 50 com gasolina.'}
+          placeholder={
+            pending
+              ? 'Confirme ou cancele a ação acima.'
+              : 'Ex.: Recebi R$ 200 da Juliany hoje.'
+          }
           value={msg}
           onChange={(e) => setMsg(e.target.value)}
           maxLength={5000}
@@ -176,12 +290,13 @@ export default function AIDrawerV2({
           style={{ width: '100%', marginTop: 8 }}
           disabled={loading || !msg.trim() || !!pending}
         >
-          {loading ? 'Pensando…' : 'Perguntar à Jornada'}
+          {loading ? 'Pensando…' : 'Enviar para a Jornada'}
         </button>
       </form>
 
       <div className="row-sub" style={{ marginTop: 10 }}>
-        Criar registros exige confirmação. Excluir dados, pagar contas e enviar WhatsApp continuam bloqueados.
+        Registrar dados pode ser automático. Pagar, transferir, apagar e
+        enviar mensagens externas continuam protegidos.
       </div>
     </aside>
   );
