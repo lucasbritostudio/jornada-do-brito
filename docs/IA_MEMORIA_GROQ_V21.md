@@ -72,3 +72,18 @@ Correção preventiva registrada:
 - Execução do novo diagnóstico **depende do Windows autenticado do proprietário**. Comandos únicos: `git pull --ff-only` e `npm run probe:groq:safe`, sem compartilhar chaves nem conteúdo de `.env.local`.
 
 Se a mensagem final for `KEY_UNAVAILABLE`, a próxima solução exige verificar a configuração de chave Groq pelos recursos próprios da Jornada; não criar um token alternativo nem contornar a proteção de duas variáveis secretas.
+
+
+## Resultado comprovado do diagnóstico local — 10/10/2026
+
+O proprietário executou `npm run probe:groq:safe` após `git pull --ff-only` em Windows, na pasta vinculada exclusivamente à Jornada. O relatório final foi:
+
+```json
+{"status":"KEY_UNAVAILABLE","reason":"BLOB_ENV_NOT_AVAILABLE"}
+```
+
+O script informou `GROQ_DIAGNOSTIC_EXIT=2`. Portanto, a tentativa **não chegou à API da Groq**. Isso não significa que a Groq ou a chave estejam inválidas: significa apenas que `BLOB_READ_WRITE_TOKEN` não está disponível para o processo Node local que carrega `.env.local`. O aviso anterior da Vercel informou 2 valores secretos não recuperáveis para a máquina local. **Não repetir essa mesma verificação nem solicitar a transferência de segredos.**
+
+**Caminho autorizado alternativo, sem deploy:** abrir o sistema Jornada já hospedado em `https://jornada-do-brito.vercel.app`, entrar na conta e consultar em **Configurações → Jornada IA · Groq Free** o status de conexão. Essa tela e a rota autenticada `GET /api/settings/groq` já existem na `main` publicada, e podem consultar o cofre com as credenciais no próprio runtime Vercel sem expô-las ao computador ou ao chat. Se o cartão disser "Ativa", um teste sintético pelo chat do próprio sistema validará conectividade (não confundir a versão publicada com a nova branch); se disser "Pendente", será necessário configurar uma chave legítima pelo painel oficial da Jornada/Groq. Não digitar chaves no chat nem abrir arquivos locais de credenciais.
+
+**Ainda sem teste real de Groq aprovado; sem deploy, preview ou alteração de dados.**
