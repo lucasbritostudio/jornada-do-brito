@@ -1,3 +1,23 @@
+/** Match a person's actual written name, never a substring in other words. */
+export function containsNameMention(prompt: string, name: string) {
+  const normalize = (text: string) => text.normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');
+  const target = normalize(name.trim());
+  if (target.length < 3) return false;
+  const text = normalize(prompt);
+  let start = 0;
+  while (start < text.length) {
+    const at = text.indexOf(target, start);
+    if (at < 0) return false;
+    const left = at === 0 || !/[a-z0-9]/.test(text[at - 1]);
+    const end = at + target.length;
+    const right = end === text.length || !/[a-z0-9]/.test(text[end]);
+    if (left && right) return true;
+    start = at + 1;
+  }
+  return false;
+}
+
 /**
  * Minimize private workspace context BEFORE it leaves Jornada for an external
  * LLM. Only explicit, relevant domains are included. Counts are not PII.
@@ -14,7 +34,7 @@ export function minimizeAiContext(
         const name = typeof candidate === 'object' && candidate !== null
           ? String((candidate as { name?: unknown }).name || '').toLocaleLowerCase('pt-BR')
           : '';
-        return name.length >= 4 && prompt.toLocaleLowerCase('pt-BR').includes(name);
+        return containsNameMention(prompt, name);
       }));
   const study = /estud|aprend|trein|aula|nota|habilidade|cinema|film|v[ií]deo|roteiro|gimbal|composi[cç]|enquadra|c[aâ]mera|grav/i.test(prompt);
   const planning = /tarefa|meta|plano|agenda|prioridade|prazo|planeja|organiza|pend[eê]ncia|hoje|amanh[aã]|semana/i.test(prompt);
