@@ -1,5 +1,6 @@
 import { get, put, BlobPreconditionFailedError } from '@vercel/blob';
 import { sanitizeForLlm } from './ai-policy';
+import { planMemoryRetention } from './memory-retention';
 
 const INDEX_PATH = 'jornada/ai-memory/index.json';
 const THREAD_PREFIX = 'jornada/ai-memory/threads/';
@@ -567,4 +568,10 @@ export async function getAiLearningOverview() {
       updatedAt: lesson.updatedAt,
     })),
   };
+}
+
+/** Read-only audit preview; no retention rule or deletion is applied. */
+export async function previewAiMemoryRetention(cutoffIso: string | null) {
+  const index = await getIndex();
+  return planMemoryRetention(index.threads, index.lessons, cutoffIso);
 }
