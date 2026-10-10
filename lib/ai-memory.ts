@@ -1,4 +1,4 @@
-import { get, put, BlobPreconditionFailedError } from '@vercel/blob';
+import { get, put, list, BlobPreconditionFailedError } from '@vercel/blob';
 import { sanitizeForLlm } from './ai-policy';
 import { planMemoryRetention } from './memory-retention';
 
@@ -581,4 +581,49 @@ export async function getAiLearningOverview() {
 export async function previewAiMemoryRetention(cutoffIso: string | null) {
   const index = await getIndex();
   return planMemoryRetention(index.threads, index.lessons, cutoffIso);
+}
+
+/**
+ * Explicit, owner-initiated maintenance only. Blob writes remain restricted
+ * to the *index*, never the underlying conversations, and are CAS-protected.
+ * Restores metadata for a conversation committed before an index write failed.
+ */
+export async function reconcileAiMemoryIndex() {
+  const paths: string[] = [];
+  let cursor: string | undefined;
+  for (let pageNo = 0; pageNo < 20; pageNo += 1) {
+    const page = await list({
+      prefix: THREAD_PREFIX,
+      limit: 1000,
+      ...(cursor ? { cursor } : {}),
+    });
+    paths.push(...page.blobs
+      .map((blob) => blob.pathname)
+      .filter((path) => /^jornada\/ai-memory\/threads\/[a-zA-Z0-9_-]{8,120}\.json$/.test(path)));
+    if (!page.hasMore) {
+      cursor = undefined;
+      break;
+    }
+    if (!page.cursor) throw new Error('MEMORY_INDEX_RECONCILE_INCOMPLETE');
+    cursor = page.cursor;
+  }
+  if (cursor) throw new Error('MEMORY_INDEX_RECONCILE_INCOMPLETE');
+  const unique = [...new Set(paths)];
+  let repaired = 0;
+  const threads: AiThread[] = [];
+  for (const pathname of unique) {
+    const id = pathname.slice(THREAD_PREFIX.length, -'.json'.length);
+    const thread = await getAiThread(id);
+    if (!thread) throw new Error('MEMORY_INDEX_THREAD_MISSING');
+    threads.push(thread);
+  }
+  await mutateIndex((index) => {
+    repaired = 0;
+    for (const thread of threads) {
+      const current = index.threads.find((meta) => meta.id === thread.id);
+      if (!current || current.turnCount < thread.turns.length) repaired += 1;
+      upsertThreadMeta(index, thread);
+    }
+  });
+  return { scanned: unique.length, repaired, completed: true };
 }
