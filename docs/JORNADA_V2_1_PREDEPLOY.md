@@ -54,3 +54,23 @@ ROLLBACK: reverter somente o deployment do projeto Jornada pelo painel Vercel ao
 
 NÃO PRONTO PARA DEPLOY.
 Produção não alterada deliberadamente, nenhuma limpeza nem mensagem real executada.
+
+
+## Continuação autorizada em 10/10/2026 — sem deploy
+
+Verificações documentais adicionais:
+- SDK Vercel Blob documenta ifMatch com erro BlobPreconditionFailedError e a opção useCache:false para leituras consistentes: https://vercel.com/docs/vercel-blob e https://vercel.com/changelog/vercel-blob-now-supports-consistent-reads-on-private-storage.
+- Groq documenta que inferência normalmente não é retida, mas existem exceções para confiabilidade/abuso de até 30 dias, mitigadas por Zero Data Retention ativável na conta. A configuração da conta da Jornada NÃO foi acessada: https://console.groq.com/docs/your-data.
+- Limites Groq Free de openai/gpt-oss-20b descritos pela Groq: 30 RPM, 1000 RPD, 8000 TPM, 200000 TPD; limites da organização podem variar: https://console.groq.com/docs/rate-limits.
+
+Correções adicionais preservadas nesta branch:
+- lib/state-mutation.ts: tentativas limitadas exclusivamente para alterações locais determinísticas. Chamadas externas jamais repetidas pelo utilitário.
+- app/api/whatsapp/send/route.ts: depois de aceitação pela Meta, reabre o estado e registra a mensagem com repetição segura de persistência. Se persistência continuar falhando, responde HTTP 202 com aviso explícito para NÃO reenviar e ID do provedor, evitando reenvio a partir dessa falha.
+- app/api/webhooks/whatsapp/route.ts: evento inbound e identificador do provedor agora são persistidos antes da resposta automática. Webhooks duplicados são deduplicados pelo providerMessageId. Uma resposta já enviada pela Meta jamais é repetida na rotina de reconciliação do estado.
+- lib/store.ts: inicialização segura do estado vazio foi preservada, com escrita uma única vez e ETag correspondente.
+- tests/v2-regression.test.ts: teste adicional de resolução de conflito por reconsulta do estado.
+- tests/whatsapp-contract.test.ts: contratos sintéticos para mensagem aceita pela Meta com falha de registro e webhook inbound gravado antes da automação, sem repetição no replay.
+
+Riscos residuais de WhatsApp: duas requisições manuais independentes ainda podem solicitar a mesma mensagem; não há chave idempotente de requisição durável antes do envio Meta. Se o processo cair após a Meta aceitar, mas antes de salvar, a mensagem poderá não aparecer imediatamente no histórico até reconciliação. A V2.1 permanece dependente de smoke test real isolado e de plano de recuperação. A solução reduz duplicações, mas não garante entrega exatamente uma vez.
+
+Os testes adicionais estão ESCRITOS no GitHub; nenhuma execução integral da suíte, TypeScript ou build foi comprovada nesta rodada. NÃO DECLARAR APROVADO. Não foi feito deploy/preview, nem acesso/destruição do Blob real.
