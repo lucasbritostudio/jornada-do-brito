@@ -152,7 +152,7 @@ export const JORNADA_DOMAIN_TOOLS = [
           reference: {
             type: 'string',
             description:
-              'Nome do cliente ou título do valor a receber, por exemplo Juliany.',
+              'Nome do cliente ou título do valor a receber.',
           },
           amount_cents: {
             type: 'integer',
@@ -641,16 +641,6 @@ export function executeDomainAction(
               },
             ]
           : []),
-        ...(accountUpdate
-          ? [
-              {
-                kind: 'restore' as const,
-                collection: 'financialAccounts',
-                entityId: accountUpdate.account.id,
-                before: accountUpdate.before,
-              },
-            ]
-          : []),
         {
           kind: 'delete',
           collection: 'transactions',
@@ -711,6 +701,16 @@ export function executeDomainAction(
           entityId: obligation.id,
           before,
         },
+        ...(accountUpdate
+          ? [
+              {
+                kind: 'restore' as const,
+                collection: 'financialAccounts',
+                entityId: accountUpdate.account.id,
+                before: accountUpdate.before,
+              },
+            ]
+          : []),
         {
           kind: 'delete',
           collection: 'transactions',
