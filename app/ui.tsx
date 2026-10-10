@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
-import type { WorkspaceState } from '@/lib/types';\nimport GroqSettings from './groq-settings';
+import type { WorkspaceState } from '@/lib/types';
+import GroqSettings from './groq-settings';
 
 type Tab='today'|'conversations'|'work'|'finance'|'journey'|'settings';
 type QuickType='expense'|'income'|'debt'|'contact'|'task'|'goal';
