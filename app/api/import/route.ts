@@ -5,7 +5,7 @@ import type { RecordSource, WorkspaceState } from '@/lib/types';
 
 export const runtime = 'nodejs';
 
-const IMPORTABLE_COLLECTIONS = new Set([
+const IMPORT_ORDER = [
   'contacts',
   'opportunities',
   'projects',
@@ -21,33 +21,121 @@ const IMPORTABLE_COLLECTIONS = new Set([
   'clientExperiences',
   'studyAreas',
   'studyEvents',
-]);
+] as const;
 
-type ImportCollection = keyof Pick<
-  WorkspaceState,
-  | 'contacts'
-  | 'opportunities'
-  | 'projects'
-  | 'videoBriefs'
-  | 'financialAccounts'
-  | 'transactions'
-  | 'debts'
-  | 'receivables'
-  | 'obligations'
-  | 'goals'
-  | 'tasks'
-  | 'inbox'
-  | 'clientExperiences'
-  | 'studyAreas'
-  | 'studyEvents'
->;
+const IMPORTABLE_COLLECTIONS = new Set<string>(IMPORT_ORDER);
+
+type ImportCollection = (typeof IMPORT_ORDER)[number];
+
+type IdIndex = Map<string, string>;
 
 function validBatchId(value: unknown) {
-  const text = String(value || '').trim();
-  if (!/^[a-zA-Z0-9._:-]{6,120}$/.test(text)) {
+  const valueText = String(value || '').trim();
+  if (!/^[a-zA-Z0-9._:-]{6,120}$/.test(valueText)) {
     throw new Error('batchId inválido.');
   }
-  return text;
+  return valueText;
+}
+
+function collectionArray(
+  state: WorkspaceState,
+  collection: ImportCollection,
+) {
+  return state[collection] as unknown as Array<
+    Record<string, any>
+  >;
+}
+
+function makeIndex(state: WorkspaceState) {
+  const index: Record<string, IdIndex> = {};
+
+  for (const collection of IMPORT_ORDER) {
+    const map = new Map<string, string>();
+    for (const item of collectionArray(state, collection)) {
+      if (item.importKey && item.id) {
+        map.set(String(item.importKey), String(item.id));
+      }
+    }
+    index[collection] = map;
+  }
+
+  return index;
+}
+
+function requireRelation(
+  index: Record<string, IdIndex>,
+  collection: ImportCollection,
+  importKey: unknown,
+  field: string,
+) {
+  if (!importKey) return undefined;
+  const key = String(importKey);
+  const id = index[collection]?.get(key);
+  if (!id) {
+    throw new Error(
+      `Relação ${field} não encontrada: ${key}.`,
+    );
+  }
+  return id;
+}
+
+function resolveRelations(
+  record: Record<string, any>,
+  index: Record<string, IdIndex>,
+) {
+  const clean = { ...record };
+
+  if (clean.contactImportKey) {
+    clean.contactId = requireRelation(
+      index,
+      'contacts',
+      clean.contactImportKey,
+      'contactImportKey',
+    );
+    delete clean.contactImportKey;
+  }
+
+  if (clean.opportunityImportKey) {
+    clean.opportunityId = requireRelation(
+      index,
+      'opportunities',
+      clean.opportunityImportKey,
+      'opportunityImportKey',
+    );
+    delete clean.opportunityImportKey;
+  }
+
+  if (clean.projectImportKey) {
+    clean.projectId = requireRelation(
+      index,
+      'projects',
+      clean.projectImportKey,
+      'projectImportKey',
+    );
+    delete clean.projectImportKey;
+  }
+
+  if (clean.accountImportKey) {
+    clean.accountId = requireRelation(
+      index,
+      'financialAccounts',
+      clean.accountImportKey,
+      'accountImportKey',
+    );
+    delete clean.accountImportKey;
+  }
+
+  if (clean.goalImportKey) {
+    clean.goalId = requireRelation(
+      index,
+      'goals',
+      clean.goalImportKey,
+      'goalImportKey',
+    );
+    delete clean.goalImportKey;
+  }
+
+  return clean;
 }
 
 function mergeCollection(
@@ -55,31 +143,45 @@ function mergeCollection(
   collection: ImportCollection,
   incoming: unknown[],
   source: RecordSource,
+  index: Record<string, IdIndex>,
 ) {
-  const target = state[collection] as unknown as Array<Record<string, any>>;
+  const target = collectionArray(state, collection);
   let created = 0;
   let updated = 0;
 
   for (const value of incoming) {
     if (!value || typeof value !== 'object') continue;
-    const record = value as Record<string, any>;
-    const importKey = String(record.importKey || '').trim();
+
+    const raw = value as Record<string, any>;
+    const importKey = String(raw.importKey || '').trim();
+
     if (!importKey) {
-      throw new Error(`Todo registro importado em ${collection} precisa de importKey.`);
+      throw new Error(
+        `Todo registro importado em ${collection} precisa de importKey.`,
+      );
     }
 
-    const existingIndex = target.findIndex((item) => item.importKey === importKey);
+    const { id: _ignoredIncomingId, ...withoutIncomingId } =
+      raw;
+    const resolved = resolveRelations(
+      withoutIncomingId,
+      index,
+    );
+
+    const existingIndex = target.findIndex(
+      (item) => item.importKey === importKey,
+    );
     const timestamp = new Date().toISOString();
-    const { id: _ignoredIncomingId, ...recordWithoutId } = record;
+
     const clean = {
-      ...recordWithoutId,
+      ...resolved,
       importKey,
       provenance: {
         ...source,
-        ...(record.provenance || {}),
+        ...(resolved.provenance || {}),
         kind: 'drive_import',
       },
-      updatedAt: record.updatedAt || timestamp,
+      updatedAt: resolved.updatedAt || timestamp,
     };
 
     if (existingIndex >= 0) {
@@ -89,13 +191,19 @@ function mergeCollection(
         id: target[existingIndex].id,
         createdAt: target[existingIndex].createdAt,
       };
+      index[collection].set(
+        importKey,
+        String(target[existingIndex].id),
+      );
       updated += 1;
     } else {
+      const id = crypto.randomUUID();
       target.unshift({
         ...clean,
-        id: crypto.randomUUID(),
-        createdAt: record.createdAt || timestamp,
+        id,
+        createdAt: resolved.createdAt || timestamp,
       });
+      index[collection].set(importKey, id);
       created += 1;
     }
   }
@@ -119,39 +227,62 @@ export async function POST(req: Request) {
     }
 
     if (!body?.payload || typeof body.payload !== 'object') {
-      return NextResponse.json({ error: 'Payload inválido.' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Payload inválido.' },
+        { status: 400 },
+      );
+    }
+
+    for (const key of Object.keys(body.payload)) {
+      if (!IMPORTABLE_COLLECTIONS.has(key)) {
+        return NextResponse.json(
+          {
+            error: `Coleção de importação não permitida: ${key}`,
+          },
+          { status: 400 },
+        );
+      }
+      if (!Array.isArray(body.payload[key])) {
+        return NextResponse.json(
+          {
+            error: `A coleção ${key} precisa ser uma lista.`,
+          },
+          { status: 400 },
+        );
+      }
     }
 
     const source: RecordSource = {
       kind: 'drive_import',
-      label: String(body?.sourceLabel || 'Migração privada da Jornada').slice(0, 180),
-      ref: body?.sourceRef ? String(body.sourceRef).slice(0, 500) : undefined,
+      label: String(
+        body?.sourceLabel || 'Migração privada da Jornada',
+      ).slice(0, 180),
+      ref: body?.sourceRef
+        ? String(body.sourceRef).slice(0, 500)
+        : undefined,
       updatedAt: body?.sourceUpdatedAt
         ? String(body.sourceUpdatedAt).slice(0, 80)
         : undefined,
     };
 
-    const results: Record<string, { created: number; updated: number }> = {};
+    const results: Record<
+      string,
+      { created: number; updated: number }
+    > = {};
+    const index = makeIndex(state);
 
-    for (const [collection, value] of Object.entries(body.payload)) {
-      if (!IMPORTABLE_COLLECTIONS.has(collection)) {
-        return NextResponse.json(
-          { error: `Coleção de importação não permitida: ${collection}` },
-          { status: 400 },
-        );
-      }
-      if (!Array.isArray(value)) {
-        return NextResponse.json(
-          { error: `A coleção ${collection} precisa ser uma lista.` },
-          { status: 400 },
-        );
+    for (const collection of IMPORT_ORDER) {
+      const value = body.payload[collection];
+      if (!Array.isArray(value) || value.length === 0) {
+        continue;
       }
 
       results[collection] = mergeCollection(
         state,
-        collection as ImportCollection,
+        collection,
         value,
         source,
+        index,
       );
     }
 
@@ -163,7 +294,10 @@ export async function POST(req: Request) {
       collection: 'migration',
       recordId: batchId,
       summary: Object.entries(results)
-        .map(([key, value]) => `${key}: +${value.created}/~${value.updated}`)
+        .map(
+          ([key, value]) =>
+            `${key}: +${value.created}/~${value.updated}`,
+        )
         .join(' · '),
     });
 
@@ -176,9 +310,16 @@ export async function POST(req: Request) {
       results,
     });
   } catch (error) {
-    if (error instanceof Error && error.message === 'UNAUTHORIZED') {
-      return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
+    if (
+      error instanceof Error &&
+      error.message === 'UNAUTHORIZED'
+    ) {
+      return NextResponse.json(
+        { error: 'Não autorizado.' },
+        { status: 401 },
+      );
     }
+
     return NextResponse.json(
       {
         error:
