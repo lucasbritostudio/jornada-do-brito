@@ -1,10 +1,11 @@
 /**
- * Executes only a read-only local audit. No deployment, previews, CI jobs,
- * credential export, .env files or Blob mutations. Requires an existing
- * authenticated Vercel CLI session and an exactly linked Jornada project.
+ * A single synthetic Groq diagnostic on the owner's already authenticated PC.
+ * Use the local Jornada .env.local created by Vercel. Do not attempt to
+ * transfer protected Vercel secrets. Do not deploy or write to Blob.
  */
 import { spawnSync } from 'node:child_process';
-import { dirname, resolve } from 'node:path';
+import { existsSync } from 'node:fs';
+import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { verifyJornadaLink, EXPECTED_PROJECT_ID, EXPECTED_TEAM_ID } from './verify-jornada-link.mjs';
 
@@ -12,31 +13,34 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 try {
   verifyJornadaLink(root);
 } catch (error) {
-  console.error(error instanceof Error ? error.message : 'LINK_CHECK_FAILED');
+  console.error(error instanceof Error ? error.message : 'JORNADA_LINK_CHECK_FAILED');
+  process.exit(4);
+}
+if (!existsSync(join(root, '.env.local'))) {
+  console.error('JORNADA_LOCAL_ENV_MISSING: autentique a pasta Jornada primeiro.');
   process.exit(4);
 }
 
-const command = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-const args = [
-  '--yes', 'vercel', '--scope', 'pizzaria-sao-francisco-contingencia', 'env', 'run',
-  '--environment', 'production',
-  '--', 'node', 'scripts/probe-groq.mjs',
-];
-const result = spawnSync(command, args, {
+// The Vercel CLI's env-run wrapper can finish without forwarding the child
+// status when protected env values cannot be pulled. Node 24 loads only the
+// already-existing, project-scoped local env file; no re-download of secrets.
+console.log('GROQ_DIAGNOSTIC_START: verificando configuração autorizada.');
+const result = spawnSync(process.execPath, [
+  '--env-file-if-exists=.env.local', 'scripts/probe-groq.mjs',
+], {
   cwd: root,
   stdio: 'inherit',
-  shell: process.platform === 'win32',
+  shell: false,
   env: {
     ...process.env,
     VERCEL_PROJECT_ID: EXPECTED_PROJECT_ID,
     VERCEL_ORG_ID: EXPECTED_TEAM_ID,
-    VERCEL_TELEMETRY_DISABLED: '1',
   },
-  timeout: 45_000,
+  timeout: 35_000,
 });
-
-if (result.error) {
-  console.error('GROQ_PROBE_CLI_UNAVAILABLE');
+if (result.error || result.signal) {
+  console.error('GROQ_DIAGNOSTIC_INTERRUPTED');
   process.exit(5);
 }
+console.log('GROQ_DIAGNOSTIC_EXIT=' + String(result.status ?? 5));
 process.exit(result.status ?? 5);
