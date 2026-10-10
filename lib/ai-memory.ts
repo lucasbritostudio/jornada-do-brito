@@ -96,10 +96,12 @@ function threadPath(id: string) {
 async function readJson<T>(pathname: string): Promise<T | null> {
   try {
     const result = await get(pathname, { access: 'private' });
-    if (!result || result.statusCode !== 200) return null;
+    if (!result) return null;
     return (await new Response(result.stream).json()) as T;
-  } catch {
-    return null;
+  } catch (error) {
+    // Ausência do objeto é diferente de falha de rede, autorização ou
+    // corrupção. Não converter erro em memória vazia evita perda silenciosa.
+    throw error;
   }
 }
 

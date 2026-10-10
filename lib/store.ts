@@ -133,10 +133,13 @@ export function upgradeState(raw: unknown): WorkspaceState {
 async function readJson<T>(pathname: string): Promise<T | null> {
   try {
     const result = await get(pathname, { access: 'private' });
-    if (!result || result.statusCode !== 200) return null;
+    if (!result) return null;
     return (await new Response(result.stream).json()) as T;
-  } catch {
-    return null;
+  } catch (error) {
+    // Apenas um Blob ausente significa estado ainda não criado. Falhas de
+    // rede, autenticação ou JSON corrompido devem interromper a operação;
+    // tratá-las como estado vazio poderia sobrescrever dados existentes.
+    throw error;
   }
 }
 

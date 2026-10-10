@@ -1,0 +1,162 @@
+import assert from 'node:assert/strict';
+import { mock, test } from 'node:test';
+
+type BlobValue = string;
+
+const blobs = new Map<string, BlobValue>();
+let readFailure = false;
+let writeFailure = false;
+
+mock.module('@vercel/blob', {
+  namedExports: {
+    get: async (pathname: string) => {
+      if (readFailure) throw new Error('synthetic read failure');
+      const value = blobs.get(pathname);
+      if (value === undefined) return null;
+      return {
+        statusCode: 200,
+        stream: new Response(value).body,
+      };
+    },
+    put: async (pathname: string, body: string) => {
+      if (writeFailure) throw new Error('synthetic write failure');
+      blobs.set(pathname, body);
+      return { pathname };
+    },
+    list: async () => ({ blobs: [] }),
+  },
+});
+
+process.env.JORNADA_SESSION_SECRET = 'synthetic-test-secret';
+
+const memory = await import('../lib/ai-memory');
+const policy = await import('../lib/ai-policy');
+const store = await import('../lib/store');
+const secrets = await import('../lib/secrets');
+const undo = await import('../lib/undo');
+
+function resetStorage() {
+  blobs.clear();
+  readFailure = false;
+  writeFailure = false;
+}
+
+test('memória mantém casos abertos e cria aprendizado só após solução posterior', async () => {
+  resetStorage();
+  const first = await memory.recordAiTurn({
+    threadId: 'thread-regression-001',
+    userText: 'Como organizar meu orçamento mensal?',
+    assistantText: 'Tente separar entradas e gastos.',
+    outcome: 'answered',
+  });
+  const second = await memory.recordAiTurn({
+    threadId: first.threadId,
+    userText: 'Ainda não consegui organizar.',
+    assistantText: 'Vamos reconciliar cada conta com o saldo atual.',
+    outcome: 'answered',
+  });
+
+  const failed = await memory.recordAiFeedback({
+    threadId: first.threadId,
+    turnId: first.turnId,
+    feedback: 'not_resolved',
+  });
+  assert.equal(failed.threadStatus, 'needs_attention');
+  assert.equal(failed.lessonCreated, false);
+
+  const resolved = await memory.recordAiFeedback({
+    threadId: first.threadId,
+    turnId: second.turnId,
+    feedback: 'resolved',
+  });
+  assert.equal(resolved.threadStatus, 'resolved');
+  assert.equal(resolved.lessonCreated, true);
+
+  const relevant = await memory.findRelevantAiLessons('organizar orçamento');
+  const unrelated = await memory.findRelevantAiLessons('câmera e iluminação');
+  assert.equal(relevant.length, 1);
+  assert.equal(unrelated.length, 0);
+});
+
+test('redação ocorre antes da persistência e também na leitura', async () => {
+  resetStorage();
+  const secret = 'gsk_SYNTHETIC_SECRET_123456';
+  const result = await memory.recordAiTurn({
+    threadId: 'thread-regression-002',
+    userText: `A chave é ${secret}`,
+    assistantText: 'Use Bearer abcdefghijklmnop1234 e senha=nao-gravar',
+    outcome: 'answered',
+  });
+
+  const threadRaw = blobs.get(`jornada/ai-memory/threads/${result.threadId}.json`) || '';
+  const indexRaw = blobs.get('jornada/ai-memory/index.json') || '';
+  assert.equal(threadRaw.includes(secret), false);
+  assert.equal(indexRaw.includes(secret), false);
+  assert.equal(threadRaw.includes('[CHAVE_REMOVIDA]'), true);
+
+  const loaded = await memory.getAiThread(result.threadId);
+  assert.equal(loaded?.turns[0].userText.includes(secret), false);
+});
+
+test('falha de leitura não é convertida em estado vazio', async () => {
+  resetStorage();
+  readFailure = true;
+  await assert.rejects(() => store.getState(), /synthetic read failure/);
+  await assert.rejects(
+    () =>
+      memory.recordAiTurn({
+        threadId: 'thread-regression-004',
+        userText: 'Não sobrescrever memória',
+        assistantText: 'Resposta sintética',
+        outcome: 'answered',
+      }),
+    /synthetic read failure/,
+  );
+  await assert.rejects(
+    () => secrets.saveGroqApiKey('synthetic-key-value-1234567890'),
+    /synthetic read failure/,
+  );
+  assert.equal(blobs.has('jornada/state.json'), false);
+  assert.equal(blobs.has('jornada/secrets.json'), false);
+});
+
+test('falha de gravação não cria índice parcial da memória', async () => {
+  resetStorage();
+  writeFailure = true;
+  await assert.rejects(
+    () =>
+      memory.recordAiTurn({
+        threadId: 'thread-regression-003',
+        userText: 'Teste de armazenamento',
+        assistantText: 'Resposta sintética',
+        outcome: 'answered',
+      }),
+    /synthetic write failure/,
+  );
+  assert.equal(blobs.size, 0);
+});
+
+test('undo permanece determinístico e de uso único', async () => {
+  const state = store.defaultState();
+  const record = {
+    id: 'synthetic-task-001',
+    title: 'Tarefa sintética',
+    status: 'todo',
+  };
+  state.tasks.push(record as never);
+  const token = undo.registerUndoEvent(
+    state,
+    [{ kind: 'delete', collection: 'tasks', entityId: record.id }],
+    10,
+  );
+  const first = undo.applyUndo(state, token);
+  assert.equal(first.changeCount, 1);
+  assert.equal(state.tasks.some((item) => item.id === record.id), false);
+  assert.throws(() => undo.applyUndo(state, token), /já foi desfeita/);
+});
+
+test('actions só podem ser salvas automaticamente com intenção explícita', () => {
+  assert.equal(policy.hasExplicitActionIntent('registre uma tarefa para amanhã'), true);
+  assert.equal(policy.hasExplicitActionIntent('como registrar uma tarefa?'), false);
+  assert.equal(policy.hasExplicitActionIntent('não crie uma tarefa'), false);
+});

@@ -363,19 +363,23 @@ export async function POST(req: Request) {
   const raw = await req.text();
   const secret = process.env.WHATSAPP_APP_SECRET;
 
-  if (secret) {
-    const header = req.headers.get('x-hub-signature-256') || '';
-    const expected =
-      'sha256=' +
-      createHmac('sha256', secret).update(raw).digest('hex');
-    const a = Buffer.from(header);
-    const b = Buffer.from(expected);
-    if (
-      a.length !== b.length ||
-      !timingSafeEqual(a, b)
-    ) {
-      return new Response('bad signature', { status: 401 });
-    }
+  if (!secret) {
+    // Sem o segredo não há como autenticar a origem do evento. Falhar fechado
+    // evita que qualquer POST externo altere o estado ou dispare automação.
+    return new Response('webhook não configurado', { status: 503 });
+  }
+
+  const header = req.headers.get('x-hub-signature-256') || '';
+  const expected =
+    'sha256=' +
+    createHmac('sha256', secret).update(raw).digest('hex');
+  const a = Buffer.from(header);
+  const b = Buffer.from(expected);
+  if (
+    a.length !== b.length ||
+    !timingSafeEqual(a, b)
+  ) {
+    return new Response('bad signature', { status: 401 });
   }
 
   let payload: any;

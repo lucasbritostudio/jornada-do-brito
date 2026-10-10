@@ -63,10 +63,13 @@ function decrypt(value: EncryptedValue) {
 async function readSecrets(): Promise<SecretsFile> {
   try {
     const result = await get(SECRETS_PATH, { access: 'private' });
-    if (!result || result.statusCode !== 200) return { version: 1 };
+    if (!result) return { version: 1 };
     return (await new Response(result.stream).json()) as SecretsFile;
-  } catch {
-    return { version: 1 };
+  } catch (error) {
+    // Ausência do arquivo é o estado inicial; falha de rede, autorização ou
+    // JSON inválido não pode ser tratada como cofre vazio, pois uma gravação
+    // posterior poderia apagar o segredo existente.
+    throw error;
   }
 }
 
