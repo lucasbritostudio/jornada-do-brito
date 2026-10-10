@@ -153,15 +153,6 @@ async function readJson<T>(pathname: string): Promise<T | null> {
   }
 }
 
-async function writeJson(pathname: string, value: unknown) {
-  await put(pathname, JSON.stringify(value, null, 2), {
-    access: 'private',
-    allowOverwrite: true,
-    contentType: 'application/json',
-    addRandomSuffix: false,
-  });
-}
-
 export async function getAuthRecord() {
   return readJson<AuthRecord>(AUTH_PATH);
 }
