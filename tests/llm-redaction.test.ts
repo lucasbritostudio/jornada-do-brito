@@ -55,3 +55,39 @@ test('tool-aware Groq transport also sanitizes the user message', async () => {
     globalThis.fetch = oldFetch;
   }
 });
+
+test('ordinary Groq answers avoid expensive unused tool schemas', async () => {
+  let body: any = null;
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, init) => {
+    body = JSON.parse(String(init?.body));
+    return new Response(JSON.stringify({
+      choices: [{ message: { content: 'resposta sintética' } }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  try {
+    await generateWithJornadaTools([
+      { role: 'user', content: 'Explique cinematografia' },
+    ], []);
+    assert.equal('tools' in body, false);
+    assert.equal('tool_choice' in body, false);
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+});
+
+test('Groq error details with sensitive data are never echoed to the caller', async () => {
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    error: { message: 'senha=synthetic-should-never-leak-123456' },
+  }), { status: 429, headers: { 'content-type': 'application/json' } });
+  try {
+    await assert.rejects(
+      () => generateWithJornadaTools([{ role: 'user', content: 'Olá' }], []),
+      (error: any) => error?.status === 429 &&
+        !String(error.message).includes('synthetic-should-never-leak'),
+    );
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+});
