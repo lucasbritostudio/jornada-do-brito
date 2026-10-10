@@ -19,7 +19,11 @@ if (!file) {
   try {
     matching = readdirSync(folder).filter(name => {
       const norm = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-      return norm.includes('clientes e evolucao v2') && name.endsWith('.txt') &&
+      const isApprovedName =
+        norm === 'jornada-clientes-v2.json' ||
+        norm === 'jornada-clientes-v2.txt' ||
+        norm.includes('clientes e evolucao v2');
+      return isApprovedName && /\.(json|txt)$/i.test(name) &&
         statSync(join(folder, name)).isFile();
     }).map(name => join(folder, name));
   } catch { /* Missing folder: fail closed. */ }
