@@ -59,3 +59,12 @@ test('client names use word boundaries and accent-insensitive matches', () => {
   assert.equal('relevantClients' in minimizeAiContext(contextWithAna, 'Me fale sobre banana'), false);
   assert.equal('relevantClients' in minimizeAiContext(contextWithAna, 'Me fale sobre Ana'), true);
 });
+
+test('named-client questions never include unrelated global learnings or task titles', () => {
+  const sent = minimizeAiContext(context, 'Como responder ao Contato Fictício?');
+  assert.equal('relevantClients' in sent, true);
+  assert.equal('recentClientLearning' in sent, false);
+  assert.equal('tasks' in sent, false);
+  assert.equal('goals' in sent, false);
+  assert.equal('professionalPatterns' in sent, false);
+});
