@@ -60,11 +60,20 @@ function decrypt(value: EncryptedValue) {
   ]).toString('utf8');
 }
 
+const secretVersions = new WeakMap<SecretsFile, string | null>();
+
 async function readSecrets(): Promise<SecretsFile> {
   try {
-    const result = await get(SECRETS_PATH, { access: 'private' });
-    if (!result) return { version: 1 };
-    return (await new Response(result.stream).json()) as SecretsFile;
+    const result = await get(SECRETS_PATH, { access: 'private', useCache: false });
+    if (!result) {
+      const empty: SecretsFile = { version: 1 };
+      secretVersions.set(empty, null);
+      return empty;
+    }
+    if (!result.blob?.etag) throw new Error('BLOB_ETAG_MISSING');
+    const file = (await new Response(result.stream).json()) as SecretsFile;
+    secretVersions.set(file, result.blob.etag);
+    return file;
   } catch (error) {
     // Ausência do arquivo é o estado inicial; falha de rede, autorização ou
     // JSON inválido não pode ser tratada como cofre vazio, pois uma gravação
@@ -74,9 +83,12 @@ async function readSecrets(): Promise<SecretsFile> {
 }
 
 async function writeSecrets(file: SecretsFile) {
+  if (!secretVersions.has(file)) throw new Error('SECRETS_VERSION_REQUIRED');
+  const etag = secretVersions.get(file);
   await put(SECRETS_PATH, JSON.stringify(file), {
     access: 'private',
-    allowOverwrite: true,
+    allowOverwrite: Boolean(etag),
+    ...(etag ? { ifMatch: etag } : {}),
     addRandomSuffix: false,
     contentType: 'application/json',
   });
