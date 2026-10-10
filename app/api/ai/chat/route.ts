@@ -155,6 +155,18 @@ function compactContext(state: Awaited<ReturnType<typeof getState>>, prompt: str
         .filter((d) => d.status === 'active' && d.structural !== false)
         .reduce((sum, d) => sum + d.currentBalanceCents, 0),
       count: state.debts.filter((d) => d.status === 'active').length,
+      items: state.debts
+        .filter((d) => d.status === 'active')
+        .slice(0, 12)
+        .map((d) => ({
+          creditor: sanitizeForLlm(d.creditorName),
+          currentBalanceCents: d.currentBalanceCents,
+          paidAmountCents: d.paidAmountCents,
+          structural: d.structural !== false,
+          nextAction: d.nextAction
+            ? sanitizeForLlm(d.nextAction)
+            : undefined,
+        })),
     },
     receivables: state.receivables
       .filter((item) => item.status === 'pending')
