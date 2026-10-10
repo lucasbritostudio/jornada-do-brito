@@ -83,7 +83,7 @@ function localFallback(state: Awaited<ReturnType<typeof getState>>, reason: stri
 export async function GET() {
   try {
     await requireAuthenticated();
-    return NextResponse.json(llmStatus());
+    return NextResponse.json(await llmStatus());
   } catch {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
   }
