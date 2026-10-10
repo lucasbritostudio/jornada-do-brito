@@ -31,26 +31,31 @@ async function probe() {
     // Read only the Groq vault of the explicitly linked Jornada project.
     if (!process.env.BLOB_READ_WRITE_TOKEN) {
       console.log(JSON.stringify({ status: 'KEY_UNAVAILABLE', reason: 'BLOB_ENV_NOT_AVAILABLE' }));
+      process.exitCode = 2;
       return;
     }
     const result = await get('jornada/secrets.json', { access: 'private', useCache: false });
     if (!result || result.statusCode !== 200 || !result.stream) {
       console.log(JSON.stringify({ status: 'KEY_UNAVAILABLE', reason: 'VAULT_NOT_FOUND' }));
+      process.exitCode = 2;
       return;
     }
     const file = await new Response(result.stream).json();
     if (!file?.groq) {
       console.log(JSON.stringify({ status: 'KEY_UNAVAILABLE', reason: 'GROQ_NOT_STORED' }));
+      process.exitCode = 2;
       return;
     }
     if (!process.env.JORNADA_SESSION_SECRET) {
-      console.log(JSON.stringify({ status: 'KEY_UNAVAILABLE', reason: 'SESSION_SECRET_NOT_IN_CLI_ENV' }));
+      console.log(JSON.stringify({ status: 'KEY_UNAVAILABLE', reason: 'SESSION_SECRET_NOT_AVAILABLE_LOCALLY' }));
+      process.exitCode = 2;
       return;
     }
     try {
       key = readVaultKey(file.groq, process.env.JORNADA_SESSION_SECRET);
     } catch {
       console.log(JSON.stringify({ status: 'KEY_UNAVAILABLE', reason: 'VAULT_DECRYPTION_FAILED' }));
+      process.exitCode = 2;
       return;
     }
   }
