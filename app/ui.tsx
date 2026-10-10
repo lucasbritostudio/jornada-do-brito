@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { WorkspaceState } from '@/lib/types';
 import GroqSettings from './groq-settings';
+import AIDrawerV2 from './ai-drawer';
 
 type Tab='today'|'conversations'|'work'|'finance'|'journey'|'settings';
 type QuickType='expense'|'income'|'debt'|'contact'|'task'|'goal';
@@ -22,7 +23,7 @@ export default function Dashboard(){
   <main className="main"><header className="topbar"><h2>{nav.find(n=>n[0]===tab)?.[1]||'Configurações'}</h2><div className="top-actions"><button className="btn secondary small" onClick={()=>setAi(true)}>IA</button></div></header><div className="content">{notice&&<div className="success" style={{marginBottom:12}}>{notice}</div>}{tab==='today'&&<Today state={state} d={derived} insights={insights} setTab={setTab}/>} {tab==='conversations'&&<Conversations state={state}/>} {tab==='work'&&<Work state={state}/>} {tab==='finance'&&<Finance state={state} d={derived}/>} {tab==='journey'&&<Journey state={state}/>} {tab==='settings'&&<Settings state={state}/>}</div></main>
   <button className="fab" aria-label="Adicionar" onClick={()=>setQuick(true)}>+</button>
   <nav className="mobile-nav">{nav.map(([k,l])=><button key={k} onClick={()=>setTab(k)} className={tab===k?'active':''}>{l}</button>)}</nav>
-  {quick&&<QuickCapture type={qtype} setType={setQtype} close={()=>setQuick(false)} save={async(c,r)=>{const ok=await mutate(c,r);if(ok)setQuick(false)}} busy={busy}/>} {ai&&<AIDrawer insights={insights} close={()=>setAi(false)}/>}
+  {quick&&<QuickCapture type={qtype} setType={setQtype} close={()=>setQuick(false)} save={async(c,r)=>{const ok=await mutate(c,r);if(ok)setQuick(false)}} busy={busy}/>} {ai&&<AIDrawerV2 insights={insights} close={()=>setAi(false)} onExecuted={load}/>}
  </div>
 }
 

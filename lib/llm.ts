@@ -182,3 +182,99 @@ export async function generateWithFreeLlm(messages: LlmMessage[]): Promise<LlmRe
 
   throw new Error('FREE_LLM_NOT_CONFIGURED');
 }
+
+
+export type ToolCallResult = LlmResult & {
+  action?: { name: string; args: Record<string, unknown> };
+};
+
+export async function generateWithJornadaTools(
+  messages: LlmMessage[],
+  tools: readonly unknown[],
+): Promise<ToolCallResult> {
+  const apiKey = await getGroqApiKey();
+  if (!apiKey) return generateWithFreeLlm(messages);
+
+  const model = process.env.GROQ_MODEL || 'openai/gpt-oss-20b';
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+
+  try {
+    const response = await fetch(GROQ_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        tools,
+        tool_choice: 'auto',
+        temperature: 0.2,
+        max_completion_tokens: 1000,
+      }),
+      signal: controller.signal,
+      cache: 'no-store',
+    });
+
+    const json = await response.json();
+    if (!response.ok) {
+      throw new LlmProviderError(
+        json?.error?.message || `Groq respondeu HTTP ${response.status}`,
+        response.status,
+        'groq',
+        response.headers.get('retry-after'),
+      );
+    }
+
+    const message = json?.choices?.[0]?.message;
+    const toolCall = message?.tool_calls?.[0];
+    let action: ToolCallResult['action'];
+
+    if (toolCall?.type === 'function' && toolCall.function?.name) {
+      let args: Record<string, unknown> = {};
+      try {
+        args = JSON.parse(toolCall.function.arguments || '{}');
+      } catch {
+        throw new LlmProviderError('A IA preparou uma ação inválida.', 502, 'groq');
+      }
+      action = { name: toolCall.function.name, args };
+    }
+
+    const content =
+      typeof message?.content === 'string' && message.content.trim()
+        ? message.content.trim()
+        : action
+          ? 'Preparei essa ação para sua confirmação.'
+          : 'Não consegui montar uma resposta.';
+
+    return {
+      text: content,
+      provider: 'groq',
+      model,
+      action,
+      usage: json.usage
+        ? {
+            promptTokens: json.usage.prompt_tokens,
+            completionTokens: json.usage.completion_tokens,
+            totalTokens: json.usage.total_tokens,
+          }
+        : undefined,
+      limits: {
+        remainingRequests: response.headers.get('x-ratelimit-remaining-requests'),
+        remainingTokens: response.headers.get('x-ratelimit-remaining-tokens'),
+        resetRequests: response.headers.get('x-ratelimit-reset-requests'),
+        resetTokens: response.headers.get('x-ratelimit-reset-tokens'),
+      },
+    };
+  } catch (error) {
+    if (error instanceof LlmProviderError) throw error;
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new LlmProviderError('A IA demorou demais para responder.', 504, 'groq');
+    }
+    throw new LlmProviderError('Falha de comunicação com a IA.', 502, 'groq');
+  } finally {
+    clearTimeout(timeout);
+  }
+}

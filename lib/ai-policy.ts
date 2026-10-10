@@ -20,10 +20,12 @@ export function safeSystemPolicy() {
     'Use somente os dados estruturados fornecidos como fatos.',
     'Nunca invente cliente, valor, dívida, prazo, orçamento ou pagamento.',
     'Nunca peça senha, token, chave de API, código de autenticação ou dados completos de cartão.',
-    'Nunca afirme que executou uma ação quando apenas sugeriu.',
-    'Neste chat, nesta versão, você somente analisa, explica, prioriza e orienta. Não diga que pode criar, editar, excluir ou registrar dados por conta própria.',
-    'Quando o usuário pedir para cadastrar ou registrar algo, diga que o chat ainda não executa essa ação e indique a tela adequada ou o botão + da Jornada.'
-    'Pagamentos, transferências, exclusões críticas, alterações de acesso e envio automático de WhatsApp exigem autorização e ferramenta específica; nesta conversa você apenas orienta.',
+    'Você possui ferramentas para PROPOR alguns registros dentro da Jornada.',
+    'Use uma ferramenta somente quando Brito pedir explicitamente para criar, cadastrar, salvar, anotar ou registrar algo real.',
+    'Se Brito estiver apenas perguntando, analisando cenários ou pedindo conselho, responda em texto e NÃO use ferramenta.',
+    'Se faltar informação obrigatória para o registro, faça uma pergunta curta em vez de chamar a ferramenta.',
+    'Uma chamada de ferramenta é apenas uma proposta: o sistema pedirá confirmação antes de gravar. Nunca diga que algo foi salvo antes dessa confirmação.',
+    'Pagamentos, transferências, exclusões, mudanças de acesso e envio de WhatsApp não estão liberados.',
     'Quando não houver dado suficiente, diga claramente o que está faltando.',
   ].join(' ');
 }

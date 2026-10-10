@@ -4,11 +4,13 @@ import { getState, saveState, audit } from '@/lib/store';
 import { buildInsights } from '@/lib/insights';
 import {
   generateWithFreeLlm,
+  generateWithJornadaTools,
   llmStatus,
   LlmProviderError,
   type LlmMessage,
 } from '@/lib/llm';
 import { safeSystemPolicy, sanitizeForLlm } from '@/lib/ai-policy';
+import { JORNADA_TOOLS, createActionProposal } from '@/lib/ai-actions';
 
 export const runtime = 'nodejs';
 
@@ -128,14 +130,28 @@ export async function POST(req: Request) {
     ];
 
     try {
-      const result = await generateWithFreeLlm(messages);
+      const result = await generateWithJornadaTools(messages, JORNADA_TOOLS);
       audit(state, {
         action: 'ai.chat.completed',
         collection: 'ai',
         summary: `${result.provider}/${result.model} · ${result.usage?.totalTokens ?? 0} tokens`,
       });
+      let action;
+      if (result.action) {
+        action = createActionProposal(result.action.name, result.action.args);
+        audit(state, {
+          action: 'ai.action.proposed',
+          collection: result.action.name,
+          summary: action.summary,
+        });
+      }
       await saveState(state);
-      return NextResponse.json({ ...result, fallback: false });
+      return NextResponse.json({
+        ...result,
+        action,
+        text: action ? 'Preparei um registro. Confira abaixo antes de salvar.' : result.text,
+        fallback: false,
+      });
     } catch (error) {
       if (error instanceof Error && error.message === 'FREE_LLM_NOT_CONFIGURED') {
         return NextResponse.json({
