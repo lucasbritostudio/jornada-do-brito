@@ -132,3 +132,41 @@ Foi criado o script `scripts/preflight-environment.mjs` que valida presença des
 O inventário somente leitura do Blob real e os testes autenticados estão bloqueados pela ausência de uma sessão CLI local já autenticada no projeto, uma vez que o conector atual disponibiliza apenas metadados do armazenamento e não permite transportar segredos ao executor. É proibido contornar a restrição de segurança. Não foi conectado um WhatsApp Business, não foram criados tokens nem enviados contatos/mensagens reais.
 
 Os sandboxes temporários de validação usados nesta fase estão parados e são não persistentes. Nenhuma alteração na produção e nenhum deploy/preview.
+
+
+## ✅ Auditoria REAL do Blob privado — concluída em 10/10/2026 (via máquina autenticada do proprietário)
+
+O proprietário executou a ferramenta `npm run audit:blob:safe` em `C:\\Users\\Usuario\\jornada-auditoria-blob`, após `npx vercel login` e vínculo explícito com `pizzaria-sao-francisco-contingencia/jornada-do-brito`. A evidência foi uma captura do terminal compartilhada na conversa; o relatório agregado produzido pelo script mostrou:
+
+```json
+{
+  "mode": "read-only",
+  "exhaustive": true,
+  "objectCount": 3,
+  "totalBytes": 1241,
+  "categories": {
+    "state": 1,
+    "auth": 1,
+    "secrets": 1,
+    "index": 0,
+    "threads": 0,
+    "files": 0,
+    "other": 0
+  },
+  "checkedJson": 3,
+  "suspectedSecretObjects": 0,
+  "unreadableObjects": 0,
+  "oversizedObjectsSkipped": 0,
+  "jsonParseFailures": 0,
+  "unseenThreadMetadata": null,
+  "staleThreadMetadata": null
+}
+```
+
+**Conclusão comprovada desta etapa:** os 3 objetos privados foram listados, lidos e analisados como JSON válido, sem erros de leitura, em modo somente leitura. Nenhuma mudança, exclusão, backup, publicação ou mensagem externa foi realizada durante a auditoria. A contagem é consistente com os metadados de store lidos anteriormente da Vercel.
+
+**Ressalvas importantes:** não há `jornada/ai-memory/index.json` nem blobs de threads no armazenamento inspecionado; portanto não havia histórico de memória de IA ali para validar. Isto não prova perda de histórico: pode significar que nenhuma conversa foi persistida. A saída `suspectedSecretObjects: 0` se refere a padrões heurísticos e exclui intencionalmente o cofre criptografado e o registro de autenticação; não constitui prova de ausência completa de dados pessoais. O relatório não revela os conteúdos dos três arquivos ao assistente e não valida o significado de cada campo.
+
+O Vercel CLI exibiu o aviso `2 Secret values cannot be pulled from the production Environment`, mas o comando de auditoria foi executado e acessou os objetos sem erro. As duas variáveis não foram identificadas no relatório; este aviso deve ser tratado separadamente da integridade do Blob, sem pedir ao proprietário que divulgue seus valores ou edite `.env.local`.
+
+**Status desta etapa: FECHADA / leitura de Blob privado validada.** Ainda NÃO equivale à aprovação de deploy, teste de recuperação/backup ou validação do WhatsApp. Não repetir a mesma auditoria sem novo motivo.
