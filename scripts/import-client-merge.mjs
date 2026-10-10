@@ -52,6 +52,12 @@ export function validateClientPackage(pkg) {
 
 function getArray(state, collection) {
   const arr = state[collection];
+  // The live Jornada upgrades sparse legacy states lazily with default
+  // arrays. Older state.json blobs may lack these optional collections.
+  if (arr === undefined) {
+    state[collection] = [];
+    return state[collection];
+  }
   if (!Array.isArray(arr)) throw new Error('JORNADA_STATE_INCOMPATIBLE');
   return arr;
 }
@@ -63,14 +69,20 @@ function getArray(state, collection) {
 export function prepareClientImport(currentState, pkg, date = new Date().toISOString()) {
   validateClientPackage(pkg);
   if (!currentState || typeof currentState !== 'object' ||
-      !Array.isArray(currentState.importBatches)) {
+      Array.isArray(currentState) ||
+      (currentState.importBatches !== undefined &&
+        !Array.isArray(currentState.importBatches))) {
     throw new Error('JORNADA_STATE_INCOMPATIBLE');
   }
-  if (currentState.importBatches.includes(CLIENT_BATCH_ID)) {
+  if (currentState.importBatches?.includes(CLIENT_BATCH_ID)) {
     return { alreadyApplied: true, changed: false, state: currentState, summary: {} };
   }
 
+  // Never replace the stored state with an empty template. Preserve EVERY
+  // existing key, including unknown legacy fields and all finance records.
+  // Only initialize fields absent from an older valid Jornada state.
   const state = structuredClone(currentState);
+  if (state.importBatches === undefined) state.importBatches = [];
   const keysByCollection = {};
   const summary = {};
   for (const collection of CLIENT_COLLECTIONS) {
