@@ -23,7 +23,7 @@ Branch de segurança: `auditoria-v2-1-sem-deploy`.
 
 - `tests/llm-redaction.test.ts`: 4 cenários mockados de transporte, incluindo isolamento da senha no prompt corrente, retirada de ferramentas desnecessárias e erro 429 sem eco de segredo: **4/4 aprovados** em sandbox isolado.
 - `tests/v2-regression.test.ts`, filtro apenas do cenário novo `memory keeps durable turn`: **1/1 aprovado**, simulando falha após gravar conversa e recuperação do índice.
-- `tests/ai-context.test.ts`: em uma primeira execução, 3/4 passaram; um teste encontrou compartilhamento excessivo de cliente em pedido genérico. **A causa foi corrigida no código**, exigindo confirmação pós-correção antes de afirmar a suíte 4/4 aprovada.
+- `tests/ai-context.test.ts`: na bateria inicial havia 1 falha de privacidade. A lógica foi corrigida, acrescentados dois cenários de proteção e **6/6 passaram** na execução final com Node 24, rede externa limitada, sem dados reais.
 - `npx tsc --noEmit` aplicado aos módulos da biblioteca de IA/memória/contexto armazenados no sandbox: **aprovado (exit 0)** antes da última mudança de filtragem de contexto e chat. A compilação completa do projeto, com as últimas mudanças, **ainda não foi executada**.
 - Testes históricos (16/16, compilação Next.js do estado anterior) não foram repetidos de forma desnecessária e não são evidência da compilação desta versão.
 
@@ -40,3 +40,22 @@ Branch de segurança: `auditoria-v2-1-sem-deploy`.
 Antes de qualquer publicação: executar `npm test`, `npx tsc --noEmit` e `npm run build` com a versão final; confirmar a configuração da chave Groq sem expô-la, testar uma chamada sintética autenticada com limite baixo de tokens e conferir configurações de privacidade Groq; manter backup; corrigir qualquer bloqueio real. Não confundir testes mockados com uma integração autenticada.
 
 **Situação: melhorias implementadas na branch e parcialmente validadas, sem deploy.**
+
+
+## Fechamento técnico da etapa AI+Groq — evidência posterior, 10/10/2026
+
+Correções finais:
+- Nomes de clientes exigem correspondência explícita com fronteiras de palavra e comparação sem diferença de acento. Exemplos: `Ana` é reconhecido, mas `banana` não revela a cliente Ana.
+- Para perguntas sobre clientes, `compactContext` não envia automaticamente 12 nomes. Em perguntas de atendimento genéricas, nenhuma ficha individual é enviada; só há dados de até 6 clientes em pesquisa específica/listagem pedida.
+- Perguntas sobre um cliente não incluem aprendizados globais de terceiros nem listas de tarefas e metas sem relação com a pergunta. A intenção de planejamento é necessária para enviar tarefas.
+- A interface da IA informa quando a resposta foi exibida, mas a memória falhou, ou quando a conversa foi persistida e só falta reconciliar o índice. Feedback não salvo também é sinalizado.
+- Em modo de manutenção, a reconciliação reconstitui **metadados E lições** do feedback já persistido, sem duplicar lições previamente indexadas. Nenhuma manutenção foi executada nos dados reais.
+
+**Testes finais adicionais executados isoladamente, sem rede para Groq e sem contato com dados reais:**
+- 6/6 — `tests/ai-context.test.ts`, incluindo regras de privacidade para finanças, clientes, nomes com/sem acento, e perguntas genéricas.
+- 2/2 — dois casos novos da `tests/v2-regression.test.ts`: índice de memória com falha após gravação, recuperação de metadados, recuperação de lição após falha no feedback e não duplicação na repetição.
+- 4/4 — `tests/llm-redaction.test.ts` em execução prévia desta etapa: sigilos ocultados, ausência de ferramentas em conversas informativas e erro 429 seguro.
+- `tsc --noEmit` com Node24 e módulos `app/ai-drawer.tsx` e `lib/ai-context.ts`: exit code 0; módulos de memória/segredos/Groq da rodada anterior também obtiveram exit 0.
+- Essas evidências verificam os componentes alterados. **Build completo Next.js desta versão, ligação autenticada real da conta Groq e salvamento de um novo turno real ainda não foram executados**. Portanto a etapa de desenvolvimento está implementada e tem testes direcionados, mas **não está liberada para deploy**.
+
+Sandboxes de testes foram encerrados após a execução. Não houve atualização da `main`, preview, publicação ou alteração de clientes/projetos externos.
