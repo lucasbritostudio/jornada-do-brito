@@ -1,21 +1,16 @@
 import { NextResponse } from 'next/server';
 import { requireAuthenticated } from '@/lib/auth';
 import { getState, saveState, audit } from '@/lib/store';
+import {
+  sendWhatsAppText,
+  WhatsAppProviderError,
+} from '@/lib/whatsapp-provider';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: Request) {
   try {
     await requireAuthenticated();
-
-    const token = process.env.WHATSAPP_ACCESS_TOKEN;
-    const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-    if (!token || !phoneId) {
-      return NextResponse.json(
-        { error: 'WhatsApp oficial ainda não conectado.' },
-        { status: 409 },
-      );
-    }
 
     const body = await req.json();
     const conversationId = String(body?.conversationId || '');
@@ -48,38 +43,12 @@ export async function POST(req: Request) {
       );
     }
 
-    const graphVersion =
-      process.env.WHATSAPP_GRAPH_VERSION || 'v25.0';
-    const response = await fetch(
-      `https://graph.facebook.com/${graphVersion}/${phoneId}/messages`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messaging_product: 'whatsapp',
-          to: contact.phone,
-          type: 'text',
-          text: { body: messageText },
-        }),
-      },
+    const sent = await sendWhatsAppText(
+      contact.phone,
+      messageText,
     );
 
-    const json = await response.json();
-    if (!response.ok) {
-      return NextResponse.json(
-        {
-          error: 'Falha ao enviar pela Meta.',
-          details: json,
-        },
-        { status: 502 },
-      );
-    }
-
     const at = new Date().toISOString();
-    const providerMessageId = json.messages?.[0]?.id;
 
     state.messages.unshift({
       id: crypto.randomUUID(),
@@ -87,7 +56,7 @@ export async function POST(req: Request) {
       contactId: contact.id,
       direction: 'outbound',
       text: messageText,
-      providerMessageId,
+      providerMessageId: sent.providerMessageId,
       status: 'sent',
       aiGenerated: origin === 'ai',
       origin,
@@ -114,14 +83,15 @@ export async function POST(req: Request) {
           ? 'whatsapp.ai.message.sent'
           : 'whatsapp.human.message.sent',
       collection: 'messages',
-      recordId: providerMessageId,
+      recordId: sent.providerMessageId,
       summary: contact.name,
     });
 
     await saveState(state);
+
     return NextResponse.json({
       ok: true,
-      providerMessageId,
+      providerMessageId: sent.providerMessageId,
       automationMode: conversation.automationMode,
     });
   } catch (error) {
@@ -131,6 +101,17 @@ export async function POST(req: Request) {
         { status: 401 },
       );
     }
+
+    if (error instanceof WhatsAppProviderError) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          details: error.details,
+        },
+        { status: error.status || 502 },
+      );
+    }
+
     return NextResponse.json(
       { error: 'Erro ao enviar.' },
       { status: 500 },

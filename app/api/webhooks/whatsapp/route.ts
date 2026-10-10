@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { getState, saveState, audit } from '@/lib/store';
 import type { Conversation, WorkspaceState } from '@/lib/types';
+import { runWhatsAppAutomation } from '@/lib/whatsapp-automation';
 
 export const runtime = 'nodejs';
 
@@ -287,6 +288,7 @@ function handleMessageEchoes(state: WorkspaceState, value: any) {
 }
 
 function handleInboundMessages(state: WorkspaceState, value: any) {
+  const received: Array<{ conversation: Conversation; contact: WorkspaceState['contacts'][number]; inboundText: string; inboundProviderMessageId?: string }> = [];
   for (const message of value.messages || []) {
     if (
       state.messages.some(
@@ -307,12 +309,13 @@ function handleInboundMessages(state: WorkspaceState, value: any) {
     const contact = ensureContact(state, phone, at, profileName);
     const conversation = ensureConversation(state, contact.id, at);
 
+    const inboundText = extractText(message);
     addMessageIfNew(state, {
       providerMessageId: message.id,
       conversation,
       contactId: contact.id,
       direction: 'inbound',
-      text: extractText(message),
+      text: inboundText,
       status: 'received',
       origin: 'customer',
       at,
@@ -329,7 +332,16 @@ function handleInboundMessages(state: WorkspaceState, value: any) {
       recordId: message.id,
       summary: contact.name,
     });
+
+    received.push({
+      conversation,
+      contact,
+      inboundText,
+      inboundProviderMessageId: message.id,
+    });
   }
+
+  return received;
 }
 
 export async function GET(req: Request) {
@@ -374,6 +386,7 @@ export async function POST(req: Request) {
   }
 
   const state = await getState();
+  const inboundForAutomation: Array<{ conversation: Conversation; contact: WorkspaceState['contacts'][number]; inboundText: string; inboundProviderMessageId?: string }> = [];
 
   for (const entry of payload.entry || []) {
     for (const change of entry.changes || []) {
@@ -396,9 +409,13 @@ export async function POST(req: Request) {
       }
 
       if (field === 'messages') {
-        handleInboundMessages(state, value);
+        inboundForAutomation.push(...handleInboundMessages(state, value));
       }
     }
+  }
+
+  for (const item of inboundForAutomation) {
+    await runWhatsAppAutomation(state, item);
   }
 
   await saveState(state);
