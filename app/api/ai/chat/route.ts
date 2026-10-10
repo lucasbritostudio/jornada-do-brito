@@ -13,10 +13,10 @@ import { CINEMA_DECISION_RULE, VIDEO_PROFESSIONAL_METHOD } from '@/lib/professio
 import {
   JORNADA_TOOLS,
   createActionProposal,
-  createUndoToken,
   executeAction,
   normalizeAction,
 } from '@/lib/ai-actions';
+import { registerUndoEvent } from '@/lib/undo';
 
 export const runtime = 'nodejs';
 
@@ -316,9 +316,21 @@ export async function POST(req: Request) {
 
         if (state.settings.ai.autoSaveLowRiskExplicitCommands) {
           const executed = executeAction(state, normalized);
-          const undoToken = createUndoToken(
-            executed.collection,
-            executed.entityId,
+          const undoChanges =
+            'undoChanges' in executed &&
+            Array.isArray(executed.undoChanges)
+              ? executed.undoChanges
+              : [
+                  {
+                    kind: 'delete' as const,
+                    collection: executed.collection,
+                    entityId: executed.entityId,
+                  },
+                ];
+
+          const undoToken = registerUndoEvent(
+            state,
+            undoChanges,
             state.settings.ai.undoWindowMinutes,
           );
 

@@ -3,6 +3,13 @@ import type {
   DataCertainty,
   WorkspaceState,
 } from './types';
+import {
+  JORNADA_DOMAIN_TOOLS,
+  domainActionLabel,
+  executeDomainAction,
+  normalizeDomainAction,
+  type DomainActionName,
+} from './domain-actions';
 
 export type JornadaActionName =
   | 'create_contact'
@@ -16,7 +23,8 @@ export type JornadaActionName =
   | 'create_obligation'
   | 'create_client_experience'
   | 'create_study_event'
-  | 'capture_inbox';
+  | 'capture_inbox'
+  | DomainActionName;
 
 export type JornadaAction = {
   name: JornadaActionName;
@@ -124,7 +132,7 @@ function certainty(value: unknown, fallback: DataCertainty = 'confirmed'): DataC
     : fallback;
 }
 
-export const JORNADA_TOOLS = [
+const BASE_JORNADA_TOOLS = [
   {
     type: 'function',
     function: {
@@ -418,6 +426,11 @@ export const JORNADA_TOOLS = [
   },
 ] as const;
 
+export const JORNADA_TOOLS = [
+  ...BASE_JORNADA_TOOLS,
+  ...JORNADA_DOMAIN_TOOLS,
+] as const;
+
 export function normalizeAction(
   name: string,
   raw: Record<string, unknown>,
@@ -706,8 +719,11 @@ export function normalizeAction(
         },
       };
     }
-    default:
+    default: {
+      const domain = normalizeDomainAction(name, raw);
+      if (domain) return domain;
       throw new Error('Ação não permitida.');
+    }
   }
 }
 
@@ -722,6 +738,14 @@ function findContactId(state: WorkspaceState, label?: unknown) {
 }
 
 function label(action: JornadaAction) {
+  const domain = normalizeDomainAction(
+    action.name,
+    action.args,
+  );
+  if (domain) {
+    return domainActionLabel(domain);
+  }
+
   const a = action.args as any;
   switch (action.name) {
     case 'create_contact':
@@ -909,6 +933,14 @@ export function executeAction(state: WorkspaceState, action: JornadaAction) {
     label: 'Jornada IA',
     updatedAt: at,
   };
+
+  const domain = normalizeDomainAction(
+    normalized.name,
+    normalized.args,
+  );
+  if (domain) {
+    return executeDomainAction(state, domain);
+  }
 
   if (normalized.name === 'create_contact') {
     const duplicate = state.contacts.find(

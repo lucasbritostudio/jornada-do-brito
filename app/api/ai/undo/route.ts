@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuthenticated } from '@/lib/auth';
 import { audit, getState, saveState } from '@/lib/store';
-import { undoCreatedRecord, verifyUndoToken } from '@/lib/ai-actions';
+import { applyUndo } from '@/lib/undo';
 
 export const runtime = 'nodejs';
 
@@ -9,38 +9,37 @@ export async function POST(req: Request) {
   try {
     await requireAuthenticated();
     const body = await req.json();
-    const payload = verifyUndoToken(String(body?.token || ''));
     const state = await getState();
 
-    const alreadyUndone = state.audit.some(
-      (entry) =>
-        entry.action === 'ai.action.undone' &&
-        entry.recordId === payload.jti,
+    const result = applyUndo(
+      state,
+      String(body?.token || ''),
     );
-    if (alreadyUndone) {
-      return NextResponse.json(
-        { error: 'Essa ação já foi desfeita.' },
-        { status: 409 },
-      );
-    }
 
-    const result = undoCreatedRecord(state, payload);
     audit(state, {
       action: 'ai.action.undone',
-      collection: result.collection,
-      recordId: payload.jti,
-      summary: `Registro ${result.entityId} removido pelo Desfazer.`,
+      collection: 'ai',
+      recordId: result.eventId,
+      summary: `${result.changeCount} alteração(ões) revertida(s).`,
     });
+
     await saveState(state);
 
     return NextResponse.json({
       ok: true,
-      message: 'Desfeito. O registro foi removido.',
+      message: 'Desfeito. A Jornada voltou ao estado anterior dessa ação.',
     });
   } catch (error) {
-    if (error instanceof Error && error.message === 'UNAUTHORIZED') {
-      return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
+    if (
+      error instanceof Error &&
+      error.message === 'UNAUTHORIZED'
+    ) {
+      return NextResponse.json(
+        { error: 'Não autorizado.' },
+        { status: 401 },
+      );
     }
+
     return NextResponse.json(
       {
         error:
