@@ -393,6 +393,7 @@ export async function POST(req: Request) {
           turnId: memory.turnId,
           learningCount: memory.learningCount,
           memorySaved: true,
+          memoryIndexPending: memory.indexPending,
         });
       } catch {
         return NextResponse.json({
