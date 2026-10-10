@@ -169,12 +169,13 @@ async function getIndex() {
 
 async function saveIndex(index: AiMemoryIndex) {
   index.updatedAt = now();
-  index.threads = index.threads
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    .slice(0, 500);
-  index.lessons = index.lessons
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    .slice(0, 300);
+  // Never silently drop older memories when an arbitrary display cap is met.
+  // UI endpoints can page, but persistent metadata must stay complete.
+  index.threads.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  index.lessons.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  if (Buffer.byteLength(JSON.stringify(index), 'utf8') > 3_000_000) {
+    throw new Error('MEMORY_INDEX_CAPACITY_REACHED');
+  }
   await writeJson(INDEX_PATH, index);
 }
 
@@ -330,8 +331,14 @@ export async function recordAiTurn(input: {
   }
   if (!persisted) throw new Error('MEMORY_THREAD_CONFLICT');
   const committedThread = persisted;
-  const { index } = await mutateIndex((index) => upsertThreadMeta(index, committedThread));
-  return { threadId: id, turnId: turn.id, learningCount: index.lessons.length };
+  // The durable thread was already written. An index outage must not tell
+  // the client that the response itself was lost and trigger a duplicate.
+  try {
+    const { index } = await mutateIndex((index) => upsertThreadMeta(index, committedThread));
+    return { threadId: id, turnId: turn.id, learningCount: index.lessons.length, indexPending: false };
+  } catch {
+    return { threadId: id, turnId: turn.id, learningCount: 0, indexPending: true };
+  }
 }
 
 function tokenize(text: string) {
