@@ -27,7 +27,6 @@ export default function AiLearningSettingsCard() {
   const [saving, setSaving] = useState(false);
   const [resultMessage, setResultMessage] = useState('');
 
-
   useEffect(() => {
     fetch('/api/ai/learning', { cache: 'no-store' })
       .then((response) =>
@@ -77,9 +76,9 @@ export default function AiLearningSettingsCard() {
           lineHeight: 1.6,
         }}
       >
-        A Jornada aprende com seu feedback. Uma tentativa ruim só
-        vira lição quando você confirma depois qual resposta
-        realmente resolveu.
+        A Jornada aprende com soluções que você confirma. Ela não lê
+        o WhatsApp automaticamente: você ensina o que funcionou após
+        cada atendimento, sem precisar conectar a API da Meta.
       </p>
 
       <form onSubmit={teachFromConversation} style={{ marginTop: 16 }}>
@@ -166,10 +165,10 @@ export default function AiLearningSettingsCard() {
                 </div>
               </div>
               <span className="badge good">
-                 {lesson.failureCount === 0 ? 'Lição confirmada' : lesson.failureCount}{' '}
-                {lesson.failureCount === 0 ? '' : lesson.failureCount === 1
-                  ? 'tentativa falhou'
-                  : 'tentativas falharam'}
+                {lesson.failureCount === 0
+                  ? 'Ensinado por você'
+                  : `${lesson.failureCount} ${lesson.failureCount === 1
+                      ? 'tentativa falhou' : 'tentativas falharam'}`}
               </span>
             </div>
           ))}
