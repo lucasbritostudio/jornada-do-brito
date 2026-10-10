@@ -1,7 +1,30 @@
 const SECRET_PATTERNS: Array<[RegExp, string]> = [
+  [
+    /-----BEGIN [^-]+ PRIVATE KEY-----[\s\S]*?-----END [^-]+ PRIVATE KEY-----/g,
+    '[CHAVE_PRIVADA_REMOVIDA]',
+  ],
+  [
+    /(\b(?:api[_ -]?key|access[_ -]?token|auth(?:entication)?[_ -]?token|client[_ -]?secret|secret|password|senha|token|chave(?: de api)?|private[_ -]?key)\b\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;}]+)/gi,
+    '$1[SEGREDO_REMOVIDO]',
+  ],
+  [
+    /([?&](?:token|key|secret|signature|sig|access_token|api_key)=)[^&#\s]+/gi,
+    '$1[SEGREDO_REMOVIDO]',
+  ],
+  [
+    /\b(?:sk|gsk|ghp|github_pat|xox[baprs]|rk_live|pk_live|whsec|vercel)_[A-Za-z0-9._-]{8,}\b/gi,
+    '[CHAVE_REMOVIDA]',
+  ],
+  [
+    /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g,
+    '[TOKEN_JWT_REMOVIDO]',
+  ],
+  [
+    /\b(Bearer|Basic)\s+[A-Za-z0-9._~+\/-]{12,}=*/gi,
+    '$1 [TOKEN_REMOVIDO]',
+  ],
   [/\bsk-[A-Za-z0-9_-]{12,}\b/g, '[CHAVE_REMOVIDA]'],
   [/\bgsk_[A-Za-z0-9_-]{12,}\b/g, '[CHAVE_REMOVIDA]'],
-  [/\bBearer\s+[A-Za-z0-9._~+\/-]{12,}=*\b/gi, 'Bearer [TOKEN_REMOVIDO]'],
   [/\b\d{13,19}\b/g, '[NUMERO_SENSIVEL_REMOVIDO]'],
 ];
 

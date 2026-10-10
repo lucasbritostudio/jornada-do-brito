@@ -28,9 +28,14 @@ como contexto em pedidos relacionados.
 - arquivos: `jornada/ai-memory/...`;
 - acesso privado no Vercel Blob;
 - conteúdo não é versionado no GitHub;
-- segredos já removidos pelo sanitizador não entram na memória;
+- antes de persistir, textos passam por redação de chaves, tokens, senhas,
+  cabeçalhos de autorização, JWTs e números sensíveis;
+- registros antigos também são redigidos ao serem lidos;
 - esta memória não é enviada para treinamento da Groq/OpenAI;
 - somente lições relevantes são reenviadas como contexto para o provedor de IA.
+
+O código não faz migração destrutiva automática de objetos antigos. Uma limpeza
+retroativa do Blob privado exigiria uma operação de manutenção separada.
 
 ## Segurança contra aprendizado errado
 
@@ -38,3 +43,6 @@ A Jornada não transforma toda resposta em regra.
 
 Só cria lição de resolução quando Brito confirma **Resolveu** depois de ter
 marcado uma tentativa anterior como **Não resolveu**.
+
+Para evitar reaprendizado por coincidência, a lição só entra no contexto quando
+há correspondência mínima de termos relevantes com o pedido atual.

@@ -1,4 +1,5 @@
 import { get, put } from '@vercel/blob';
+import { sanitizeForLlm } from './ai-policy';
 
 const INDEX_PATH = 'jornada/ai-memory/index.json';
 const THREAD_PREFIX = 'jornada/ai-memory/threads/';
@@ -112,10 +113,46 @@ async function writeJson(pathname: string, value: unknown) {
 }
 
 async function getIndex() {
-  return (await readJson<AiMemoryIndex>(INDEX_PATH)) || {
-    ...EMPTY_INDEX,
-    threads: [],
-    lessons: [],
+  const stored = await readJson<AiMemoryIndex>(INDEX_PATH);
+  if (!stored) {
+    return {
+      ...EMPTY_INDEX,
+      threads: [],
+      lessons: [],
+    };
+  }
+
+  return {
+    version: 1 as const,
+    threads: Array.isArray(stored.threads)
+      ? stored.threads.map((thread) => ({
+          ...thread,
+          title: cleanText(String(thread.title || ''), 90),
+        }))
+      : [],
+    lessons: Array.isArray(stored.lessons)
+      ? stored.lessons.map((lesson) => {
+          const problem = cleanText(String(lesson.problem || ''));
+          const successfulResolution = cleanText(
+            String(lesson.successfulResolution || ''),
+            8000,
+          );
+
+          return {
+            ...lesson,
+            problem,
+            successfulResolution,
+            failureCount: Number.isFinite(lesson.failureCount)
+              ? lesson.failureCount
+              : 1,
+            tags: tokenize(`${problem} ${successfulResolution}`),
+            useCount: Number.isFinite(lesson.useCount)
+              ? lesson.useCount
+              : 0,
+          };
+        })
+      : [],
+    updatedAt: String(stored.updatedAt || EMPTY_INDEX.updatedAt),
   };
 }
 
@@ -132,7 +169,31 @@ async function saveIndex(index: AiMemoryIndex) {
 
 export async function getAiThread(id: string) {
   const normalized = safeId(id);
-  return readJson<AiThread>(threadPath(normalized));
+  const thread = await readJson<AiThread>(threadPath(normalized));
+  if (!thread) return null;
+
+  return {
+    ...thread,
+    title: cleanText(String(thread.title || ''), 90),
+    turns: Array.isArray(thread.turns)
+      ? thread.turns.map((turn) => ({
+          ...turn,
+          userText: cleanText(String(turn.userText || '')),
+          assistantText: cleanText(
+            String(turn.assistantText || ''),
+            8000,
+          ),
+          provider: cleanText(String(turn.provider || 'unknown'), 80),
+          model: cleanText(String(turn.model || 'unknown'), 120),
+          actionName: turn.actionName
+            ? cleanText(String(turn.actionName), 120)
+            : undefined,
+          errorCode: turn.errorCode
+            ? cleanText(String(turn.errorCode), 120)
+            : undefined,
+        }))
+      : [],
+  };
 }
 
 function upsertThreadMeta(index: AiMemoryIndex, thread: AiThread) {
@@ -150,12 +211,35 @@ function upsertThreadMeta(index: AiMemoryIndex, thread: AiThread) {
 }
 
 function cleanText(value: string, max = 5000) {
-  return value.trim().slice(0, max);
+  return sanitizeForLlm(value).trim().slice(0, max);
 }
 
 function titleFrom(text: string) {
   const clean = cleanText(text, 90);
   return clean.length < 90 ? clean : clean.slice(0, 87) + '...';
+}
+
+function deriveThreadStatus(thread: AiThread): AiThread['status'] {
+  const feedbackTurns = thread.turns.filter(
+    (item) => item.feedback,
+  );
+  if (!feedbackTurns.length) return 'open';
+
+  let lastResolved = -1;
+  for (let index = thread.turns.length - 1; index >= 0; index -= 1) {
+    if (thread.turns[index].feedback === 'resolved') {
+      lastResolved = index;
+      break;
+    }
+  }
+
+  const hasOpenFailure = thread.turns
+    .slice(lastResolved + 1)
+    .some((item) => item.feedback === 'not_resolved');
+
+  return hasOpenFailure || lastResolved < 0
+    ? 'needs_attention'
+    : 'resolved';
 }
 
 export async function recordAiTurn(input: {
@@ -258,9 +342,7 @@ export async function recordAiFeedback(input: {
   const index = await getIndex();
   let lessonCreated = false;
 
-  if (input.feedback === 'not_resolved') {
-    thread.status = 'needs_attention';
-  } else {
+  if (input.feedback === 'resolved') {
     const currentIndex = thread.turns.findIndex(
       (item) => item.id === input.turnId,
     );
@@ -315,21 +397,9 @@ export async function recordAiFeedback(input: {
       lessonCreated = true;
     }
 
-    let lastResolved = -1;
-    for (let index = thread.turns.length - 1; index >= 0; index -= 1) {
-      if (thread.turns[index].feedback === 'resolved') {
-        lastResolved = index;
-        break;
-      }
-    }
-    const hasOpenFailure = thread.turns
-      .slice(lastResolved + 1)
-      .some((item) => item.feedback === 'not_resolved');
-    thread.status = hasOpenFailure
-      ? 'needs_attention'
-      : 'resolved';
   }
 
+  thread.status = deriveThreadStatus(thread);
   thread.updatedAt = at;
   upsertThreadMeta(index, thread);
 
@@ -360,7 +430,7 @@ export async function findRelevantAiLessons(
       );
       return { lesson, score };
     })
-    .filter((item) => item.score > 0)
+    .filter((item) => item.score >= (query.size <= 2 ? 1 : 2))
     .sort(
       (a, b) =>
         b.score - a.score ||
