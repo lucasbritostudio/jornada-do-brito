@@ -80,45 +80,51 @@ if (!process.env.BLOB_READ_WRITE_TOKEN) {
       summary.categories[category(blob.pathname)] += 1;
     }
 
-    const indexMeta = blobs.find((blob) => blob.pathname === GROUPS.index);
-    if (indexMeta && indexMeta.size <= 2_000_000) {
-      try {
-        const response = await get(GROUPS.index, { access: 'private', useCache: false });
-        if (response?.stream) {
-          const data = await new Response(response.stream).json();
-          const indexedIds = new Set(Array.isArray(data?.threads) ?
-            data.threads.map((t) => t.id).filter((id) => typeof id === 'string') : []);
-          let unindexed = 0;
-          for (const blob of blobs) {
-            if (!blob.pathname.startsWith('jornada/ai-memory/threads/')) continue;
-            const id = blob.pathname.slice('jornada/ai-memory/threads/'.length).replace(/\.json$/, '');
-            if (!indexedIds.has(id)) unindexed += 1;
-          }
-          summary.unseenThreadMetadata = unindexed;
-          summary.staleThreadMetadata = [...indexedIds].filter(
-            (id) => !paths.has(`jornada/ai-memory/threads/${id}.json`),
-          ).length;
-        }
-      } catch {
-        summary.unreadableObjects += 1;
-      }
-    }
-    // Historical memory and the secret vault are inspected ONLY in aggregate.
-    // Avoid reading main state containing clients, finance and WhatsApp history.
+    // Read each JSON once, including state/auth/secrets. Never log raw values.
+    // The store has only three objects at last metadata check, but the
+    // loop remains exhaustive if more records are created in the future.
+    let indexThreadIds = null;
     for (const blob of blobs) {
-      if (!(blob.pathname.startsWith('jornada/ai-memory/') || blob.pathname === GROUPS.secrets)) continue;
-      if (blob.size > 2_000_000) { summary.oversizedObjectsSkipped += 1; continue; }
+      // Non-JSON attachments remain private and are only counted by category.
+      if (!blob.pathname.endsWith('.json')) continue;
+      if (blob.size > 2_000_000) {
+        summary.oversizedObjectsSkipped += 1;
+        continue;
+      }
       try {
         const data = await get(blob.pathname, { access: 'private', useCache: false });
-        if (!data?.stream) continue;
+        if (!data?.stream) {
+          summary.unreadableObjects += 1;
+          continue;
+        }
         const body = await new Response(data.stream).text();
-        JSON.parse(body);
+        const parsed = JSON.parse(body);
         summary.checkedJson += 1;
-        if (patterns.some((p) => p.test(body))) summary.suspectedSecretObjects += 1;
+        if (blob.pathname === GROUPS.index) {
+          indexThreadIds = new Set(Array.isArray(parsed?.threads)
+            ? parsed.threads.map((entry) => entry?.id).filter((value) => typeof value === 'string')
+            : []);
+        }
+        // The auth record and vault intentionally contain password hash or
+        // encrypted credentials; do not report them as leaked clear-text.
+        if (blob.pathname !== GROUPS.secrets && blob.pathname !== GROUPS.auth &&
+            patterns.some((pattern) => pattern.test(body))) {
+          summary.suspectedSecretObjects += 1;
+        }
       } catch (error) {
         if (error instanceof SyntaxError) summary.jsonParseFailures += 1;
         else summary.unreadableObjects += 1;
       }
+    }
+    if (indexThreadIds) {
+      const allThreadIds = blobs
+        .filter((blob) => blob.pathname.startsWith('jornada/ai-memory/threads/') &&
+          blob.pathname.endsWith('.json'))
+        .map((blob) => blob.pathname.slice('jornada/ai-memory/threads/'.length).replace(/\\.json$/, ''));
+      summary.unseenThreadMetadata = allThreadIds.filter((id) => !indexThreadIds.has(id)).length;
+      summary.staleThreadMetadata = [...indexThreadIds].filter(
+        (id) => !paths.has(`jornada/ai-memory/threads/${id}.json`),
+      ).length;
     }
     // No raw records, personal details, IDs, individual pathnames, or matches.
     console.log(JSON.stringify(summary, null, 2));
