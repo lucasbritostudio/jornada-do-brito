@@ -59,3 +59,16 @@ Correções finais:
 - Essas evidências verificam os componentes alterados. **Build completo Next.js desta versão, ligação autenticada real da conta Groq e salvamento de um novo turno real ainda não foram executados**. Portanto a etapa de desenvolvimento está implementada e tem testes direcionados, mas **não está liberada para deploy**.
 
 Sandboxes de testes foram encerrados após a execução. Não houve atualização da `main`, preview, publicação ou alteração de clientes/projetos externos.
+
+
+## Diagnóstico Windows — Groq não retornou resultado (10/10/2026)
+
+O proprietário apresentou captura do PowerShell mostrando que a Vercel CLI carregou `.env.local`, avisou que **2 variáveis secretas não puderam ser recuperadas** e devolveu o prompt do terminal **sem emitir `SYNTHETIC_REQUEST_OK` nem `KEY_UNAVAILABLE`**. Portanto **a API Groq real NÃO está validada**; ausência de erro não prova sucesso. Não repetir a suíte completa ou os testes mockados já aprovados.
+
+Correção preventiva registrada:
+- `scripts/run-safe-groq-probe.mjs` agora executa diretamente o Node.js 24 com `--env-file-if-exists=.env.local`, reutilizando o arquivo da Jornada já vinculado/autenticado; **não consulta novamente nem exporta secrets da Vercel**, não faz deploy e verifica o ID do projeto/equipe antes.
+- Exibe marcadores `GROQ_DIAGNOSTIC_START` e `GROQ_DIAGNOSTIC_EXIT=<código>` para impedir um resultado silencioso.
+- `scripts/probe-groq.mjs` retorna exit code 2 quando uma variável indispensável não está disponível, em vez de fingir exit 0. Em caso de credenciais disponíveis, usa **somente uma frase fictícia** com no máximo 128 tokens de saída, sem alterar Blob.
+- Execução do novo diagnóstico **depende do Windows autenticado do proprietário**. Comandos únicos: `git pull --ff-only` e `npm run probe:groq:safe`, sem compartilhar chaves nem conteúdo de `.env.local`.
+
+Se a mensagem final for `KEY_UNAVAILABLE`, a próxima solução exige verificar a configuração de chave Groq pelos recursos próprios da Jornada; não criar um token alternativo nem contornar a proteção de duas variáveis secretas.
