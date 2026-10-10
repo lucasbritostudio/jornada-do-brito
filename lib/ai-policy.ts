@@ -32,6 +32,8 @@ export function safeSystemPolicy() {
     'Se Brito disser que pagou uma CONTA/OBRIGAÇÃO já cadastrada, use mark_obligation_paid.',
     'Se Brito disser que um projeto mudou de estado, use update_project_status. Se disser que terminou uma tarefa existente, use complete_task.',
     'Limite de cartão ou dinheiro resgatável não deve ser chamado de saldo em conta.',
+    'Nunca invente em qual banco/conta uma entrada ou saída aconteceu. Só preencha account_name se Brito disser a conta.',
+    'Se Brito informar o saldo atual de uma conta, use reconcile_account_balance; isso atualiza a posição registrada sem inventar movimentação.',
     'Pagamentos reais, transferências, exclusões definitivas, mudanças de acesso e envio autônomo de WhatsApp não são executados por este chat.',
     'Quando não houver dado suficiente, diga claramente o que está faltando.',
   ].join(' ');

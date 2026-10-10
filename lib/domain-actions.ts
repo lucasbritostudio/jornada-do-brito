@@ -8,7 +8,8 @@ export type DomainActionName =
   | 'record_debt_payment'
   | 'mark_obligation_paid'
   | 'update_project_status'
-  | 'complete_task';
+  | 'complete_task'
+  | 'reconcile_account_balance';
 
 export type DomainAction = {
   name: DomainActionName;
@@ -71,6 +72,40 @@ function snapshot(value: object) {
   >;
 }
 
+function findAccount(
+  state: WorkspaceState,
+  label: string,
+) {
+  return findUnique(
+    state.financialAccounts.filter((item) => item.active),
+    label,
+    (item) => item.name,
+    'conta',
+  );
+}
+
+function accountSnapshotAndDelta(
+  state: WorkspaceState,
+  accountName: unknown,
+  deltaCents: number,
+  at: string,
+) {
+  const label = text(accountName, 160);
+  if (!label) return undefined;
+
+  const account = findAccount(state, label);
+  const before = snapshot(account);
+  const base =
+    account.currentBalanceCents ??
+    account.openingBalanceCents;
+
+  account.currentBalanceCents = base + deltaCents;
+  account.balanceAsOf = at;
+  account.updatedAt = at;
+
+  return { account, before };
+}
+
 function findUnique<T>(
   items: T[],
   query: string,
@@ -129,6 +164,10 @@ export const JORNADA_DOMAIN_TOOLS = [
             description: 'YYYY-MM-DD. Omita para hoje.',
           },
           description: { type: 'string' },
+          account_name: {
+            type: 'string',
+            description: 'Conta em que o dinheiro entrou, somente se Brito informar.',
+          },
         },
         required: ['reference'],
       },
@@ -151,6 +190,10 @@ export const JORNADA_DOMAIN_TOOLS = [
             description: 'YYYY-MM-DD. Omita para hoje.',
           },
           description: { type: 'string' },
+          account_name: {
+            type: 'string',
+            description: 'Conta usada no pagamento, somente se Brito informar.',
+          },
         },
         required: ['creditor_name', 'amount_cents'],
       },
@@ -171,8 +214,36 @@ export const JORNADA_DOMAIN_TOOLS = [
             type: 'string',
             description: 'YYYY-MM-DD. Omita para hoje.',
           },
+          account_name: {
+            type: 'string',
+            description: 'Conta usada no pagamento, somente se Brito informar.',
+          },
         },
         required: ['reference'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'reconcile_account_balance',
+      description:
+        'Use quando Brito informar o saldo atual de uma conta. Atualiza a posição registrada sem inventar receita ou gasto.',
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          account_name: { type: 'string' },
+          balance_cents: {
+            type: 'integer',
+            description: 'Saldo atual em centavos.',
+          },
+          balance_as_of: {
+            type: 'string',
+            description: 'YYYY-MM-DD. Omita para hoje.',
+          },
+        },
+        required: ['account_name', 'balance_cents'],
       },
     },
   },
@@ -241,6 +312,7 @@ export function normalizeDomainAction(
         amount_cents: positiveInt(raw.amount_cents),
         occurred_on: isoDate(raw.occurred_on) || todayLocal(),
         description: text(raw.description, 300) || undefined,
+        account_name: text(raw.account_name, 160) || undefined,
       },
     };
   }
@@ -260,6 +332,7 @@ export function normalizeDomainAction(
         amount_cents: amount,
         occurred_on: isoDate(raw.occurred_on) || todayLocal(),
         description: text(raw.description, 300) || undefined,
+        account_name: text(raw.account_name, 160) || undefined,
       },
     };
   }
@@ -274,6 +347,26 @@ export function normalizeDomainAction(
       args: {
         reference,
         occurred_on: isoDate(raw.occurred_on) || todayLocal(),
+        account_name: text(raw.account_name, 160) || undefined,
+      },
+    };
+  }
+
+  if (name === 'reconcile_account_balance') {
+    const accountName = text(raw.account_name, 160);
+    const balance = Number(raw.balance_cents);
+    if (!accountName || !Number.isFinite(balance) || balance < 0) {
+      throw new Error(
+        'Para atualizar o saldo, preciso da conta e do valor atual.',
+      );
+    }
+    return {
+      name,
+      args: {
+        account_name: accountName,
+        balance_cents: Math.round(balance),
+        balance_as_of:
+          isoDate(raw.balance_as_of) || todayLocal(),
       },
     };
   }
@@ -354,6 +447,14 @@ export function domainActionLabel(
     };
   }
 
+  if (action.name === 'reconcile_account_balance') {
+    return {
+      title: 'Atualizar saldo da conta',
+      summary: `${args.account_name} · ${brl(args.balance_cents)}`,
+      details: [args.balance_as_of],
+    };
+  }
+
   if (action.name === 'update_project_status') {
     return {
       title: 'Atualizar projeto',
@@ -407,8 +508,16 @@ export function executeDomainAction(
     receivable.receivedTransactionId = transactionId;
     receivable.updatedAt = at;
 
+    const accountUpdate = accountSnapshotAndDelta(
+      state,
+      args.account_name,
+      amount,
+      at,
+    );
+
     state.transactions.unshift({
       id: transactionId,
+      accountId: accountUpdate?.account.id,
       contactId: receivable.contactId,
       projectId: receivable.projectId,
       type: 'income',
@@ -432,6 +541,16 @@ export function executeDomainAction(
         entityId: receivable.id,
         before,
       },
+      ...(accountUpdate
+        ? [
+            {
+              kind: 'restore' as const,
+              collection: 'financialAccounts',
+              entityId: accountUpdate.account.id,
+              before: accountUpdate.before,
+            },
+          ]
+        : []),
       {
         kind: 'delete',
         collection: 'transactions',
@@ -477,8 +596,16 @@ export function executeDomainAction(
       debt.currentBalanceCents === 0 ? 'settled' : 'active';
     debt.updatedAt = at;
 
+    const accountUpdate = accountSnapshotAndDelta(
+      state,
+      args.account_name,
+      -amount,
+      at,
+    );
+
     state.transactions.unshift({
       id: transactionId,
+      accountId: accountUpdate?.account.id,
       type: 'expense',
       amountCents: amount,
       occurredOn: args.occurred_on,
@@ -504,6 +631,26 @@ export function executeDomainAction(
           entityId: debt.id,
           before,
         },
+        ...(accountUpdate
+          ? [
+              {
+                kind: 'restore' as const,
+                collection: 'financialAccounts',
+                entityId: accountUpdate.account.id,
+                before: accountUpdate.before,
+              },
+            ]
+          : []),
+        ...(accountUpdate
+          ? [
+              {
+                kind: 'restore' as const,
+                collection: 'financialAccounts',
+                entityId: accountUpdate.account.id,
+                before: accountUpdate.before,
+              },
+            ]
+          : []),
         {
           kind: 'delete',
           collection: 'transactions',
@@ -531,8 +678,16 @@ export function executeDomainAction(
     obligation.status = 'paid';
     obligation.updatedAt = at;
 
+    const accountUpdate = accountSnapshotAndDelta(
+      state,
+      args.account_name,
+      -obligation.amountCents,
+      at,
+    );
+
     state.transactions.unshift({
       id: transactionId,
+      accountId: accountUpdate?.account.id,
       type: 'expense',
       amountCents: obligation.amountCents,
       occurredOn: args.occurred_on,
@@ -560,6 +715,28 @@ export function executeDomainAction(
           kind: 'delete',
           collection: 'transactions',
           entityId: transactionId,
+        },
+      ] satisfies UndoChange[],
+    };
+  }
+
+  if (action.name === 'reconcile_account_balance') {
+    const account = findAccount(state, args.account_name);
+    const before = snapshot(account);
+    account.currentBalanceCents = args.balance_cents;
+    account.balanceAsOf = args.balance_as_of;
+    account.updatedAt = at;
+
+    return {
+      collection: 'financialAccounts',
+      entityId: account.id,
+      message: `Saldo registrado de ${account.name} atualizado para ${brl(args.balance_cents)}.`,
+      undoChanges: [
+        {
+          kind: 'restore',
+          collection: 'financialAccounts',
+          entityId: account.id,
+          before,
         },
       ] satisfies UndoChange[],
     };
