@@ -4,6 +4,11 @@ import { mock, test } from 'node:test';
 type BlobValue = string;
 
 const blobs = new Map<string, BlobValue>();
+const etags = new Map<string, string>();
+let etagSequence = 0;
+class BlobPreconditionFailedError extends Error {
+  name = 'BlobPreconditionFailedError';
+}
 let readFailure = false;
 let writeFailure = false;
 
@@ -16,13 +21,27 @@ mock.module('@vercel/blob', {
       return {
         statusCode: 200,
         stream: new Response(value).body,
+        blob: { etag: etags.get(pathname) },
       };
     },
-    put: async (pathname: string, body: string) => {
+    put: async (pathname: string, body: string, options: {
+      allowOverwrite?: boolean; ifMatch?: string
+    } = {}) => {
       if (writeFailure) throw new Error('synthetic write failure');
+      const existing = etags.get(pathname);
+      if (options.ifMatch && options.ifMatch !== existing)
+        throw new BlobPreconditionFailedError('synthetic concurrent conflict');
+      if (!options.allowOverwrite && existing) {
+        const error = new Error('synthetic already exists');
+        error.name = 'BlobAlreadyExistsError';
+        throw error;
+      }
       blobs.set(pathname, body);
-      return { pathname };
+      const etag = String(++etagSequence);
+      etags.set(pathname, etag);
+      return { pathname, etag };
     },
+    BlobPreconditionFailedError,
     list: async () => ({ blobs: [] }),
   },
 });
@@ -37,6 +56,7 @@ const undo = await import('../lib/undo');
 
 function resetStorage() {
   blobs.clear();
+  etags.clear();
   readFailure = false;
   writeFailure = false;
 }
@@ -159,4 +179,50 @@ test('actions só podem ser salvas automaticamente com intenção explícita', (
   assert.equal(policy.hasExplicitActionIntent('registre uma tarefa para amanhã'), true);
   assert.equal(policy.hasExplicitActionIntent('como registrar uma tarefa?'), false);
   assert.equal(policy.hasExplicitActionIntent('não crie uma tarefa'), false);
+});
+
+test('workspace rejeita snapshot obsoleto sem perder gravações anteriores', async () => {
+  resetStorage();
+  const first = await store.getState();
+  const second = await store.getState();
+  first.profile.displayName = 'Primeira versão';
+  second.profile.displayName = 'Versão obsoleta';
+  await store.saveState(first);
+  await assert.rejects(() => store.saveState(second), /already exists/);
+  const persisted = await store.getState();
+  assert.equal(persisted.profile.displayName, 'Primeira versão');
+
+  const third = await store.getState();
+  const fourth = await store.getState();
+  third.profile.displayName = 'Atualização aceita';
+  fourth.profile.displayName = 'Atualização rejeitada';
+  await store.saveState(third);
+  await assert.rejects(() => store.saveState(fourth), BlobPreconditionFailedError);
+  assert.equal((await store.getState()).profile.displayName, 'Atualização aceita');
+});
+
+test('mensagens simultâneas na mesma conversa são preservadas', async () => {
+  resetStorage();
+  const threadId = 'thread-concurrent-001';
+  const results = await Promise.all([
+    memory.recordAiTurn({
+      threadId, userText: 'Primeira mensagem', assistantText: 'Resposta 1', outcome: 'answered',
+    }),
+    memory.recordAiTurn({
+      threadId, userText: 'Segunda mensagem', assistantText: 'Resposta 2', outcome: 'answered',
+    }),
+  ]);
+  assert.equal(new Set(results.map((r) => r.turnId)).size, 2);
+  const thread = await memory.getAiThread(threadId);
+  assert.equal(thread?.turns.length, 2);
+  assert.deepEqual(new Set(thread?.turns.map((turn) => turn.userText)),
+    new Set(['Primeira mensagem', 'Segunda mensagem']));
+});
+
+test('cofre criptografado rejeita overwrite com versão obsoleta', async () => {
+  resetStorage();
+  await secrets.saveGroqApiKey('gsk_synthetic_key_aabbccddeeff');
+  const raw = blobs.get('jornada/secrets.json') || '';
+  assert.equal(raw.includes('gsk_synthetic_key_aabbccddeeff'), false);
+  assert.equal(await secrets.getGroqApiKey(), 'gsk_synthetic_key_aabbccddeeff');
 });
