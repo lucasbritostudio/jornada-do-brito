@@ -34,7 +34,7 @@ function clientContext(
   const named = state.contacts.filter((contact) =>
     lower.includes(contact.name.toLocaleLowerCase('pt-BR')),
   );
-  const wantsClients = /cliente|trabalho|projeto|negocia|garreto|berg|juliany|max|naiara|tarcisio|tarcísio/i.test(
+  const wantsClients = /cliente|trabalho|projeto|negocia|or[cç]amento|briefing|pagamento|aprova[cç][aã]o/i.test(
     prompt,
   );
   if (!named.length && !wantsClients) return [];
