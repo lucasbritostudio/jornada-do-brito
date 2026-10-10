@@ -3,6 +3,7 @@
  * Does not deploy or change any other service. Never prints client details.
  */
 import { get, put, BlobPreconditionFailedError } from '@vercel/blob';
+import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { homedir } from 'node:os';
@@ -38,6 +39,11 @@ async function main() {
   if (statSync(file).size > MAX_FILE_BYTES) throw new Error('JORNADA_IMPORT_FILE_TOO_LARGE');
 
   const pkg = JSON.parse(readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
+  // Fixed digest covers the reviewed private Drive batch, not formatting:
+  // rejects accidental edits, wrong downloads and disguised extra records.
+  const approvedDigest = 'e7e7d46b7dc33f50bcb80d6a736a664a51cf90c19bb3b704aa77ac122115239f';
+  const digest = createHash('sha256').update(JSON.stringify(pkg)).digest('hex');
+  if (digest !== approvedDigest) throw new Error('JORNADA_CLIENT_BATCH_CHECKSUM_MISMATCH');
   const res = await get(STATE_PATH, { access: 'private', useCache: false });
   if (res?.statusCode !== 200 || !res.stream || !res.blob?.etag) {
     throw new Error('JORNADA_STATE_OR_ETAG_NOT_AVAILABLE');
