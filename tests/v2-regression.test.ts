@@ -268,7 +268,38 @@ test('memory keeps durable turn when secondary index write fails, then repairs o
   assert.equal(blobs.has('jornada/ai-memory/index.json'), false);
   indexWriteFailure = false;
   const result = await memory.reconcileAiMemoryIndex();
-  assert.deepEqual(result, { scanned: 1, repaired: 1, completed: true });
+  assert.deepEqual(result, { scanned: 1, repaired: 1, lessonsRestored: 0, completed: true });
   assert.equal((await memory.getAiMemoryStats()).threads, 1);
   assert.equal((await memory.getAiHistory(saved.threadId)).messages.length, 2);
+});
+
+test('reconciliation restores learned lesson when feedback committed but index write failed', async () => {
+  resetStorage();
+  const first = await memory.recordAiTurn({
+    threadId: 'thread-lesson-repair-01',
+    userText: 'Meu planejamento de treino falhou',
+    assistantText: 'Tente uma nova rotina',
+    outcome: 'answered',
+  });
+  const second = await memory.recordAiTurn({
+    threadId: first.threadId,
+    userText: 'Agora consegui melhorar o treino',
+    assistantText: 'Ajuste a carga progressivamente',
+    outcome: 'answered',
+  });
+  await memory.recordAiFeedback({
+    threadId: first.threadId, turnId: first.turnId, feedback: 'not_resolved',
+  });
+  indexWriteFailure = true;
+  await assert.rejects(() => memory.recordAiFeedback({
+    threadId: first.threadId, turnId: second.turnId, feedback: 'resolved',
+  }), /synthetic index write failure/);
+  indexWriteFailure = false;
+  assert.equal((await memory.getAiMemoryStats()).learningCount, 0);
+  const repair = await memory.reconcileAiMemoryIndex();
+  assert.equal(repair.lessonsRestored, 1);
+  assert.equal((await memory.getAiMemoryStats()).learningCount, 1);
+  const repeat = await memory.reconcileAiMemoryIndex();
+  assert.equal(repeat.lessonsRestored, 0);
+  assert.equal((await memory.getAiMemoryStats()).learningCount, 1);
 });
