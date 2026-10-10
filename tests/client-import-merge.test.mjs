@@ -67,6 +67,9 @@ test('imports relationships and preserves finance and original state', () => {
   assert.ok(plan.state.projects.every(p => plan.state.opportunities.some(o => o.id === p.opportunityId)));
   assert.ok(plan.state.clientExperiences.every(e => plan.state.contacts.some(c => c.id === e.contactId)));
   assert.equal(plan.state.importBatches[0], CLIENT_BATCH_ID);
+  assert.ok(plan.state.clientExperiences.every(e => e.clientLabel === 'Cliente atendido'));
+  assert.ok(plan.state.clientExperiences.every(e => !('nextAction' in e)));
+
 });
 
 test('repeating the same batch is a no-op', () => {
@@ -101,4 +104,10 @@ test('preserves original ID and creation date when an imported key is updated', 
   assert.equal(updated.id, 'existing');
   assert.equal(updated.createdAt, '2020-01-01T00:00:00.000Z');
   assert.equal(plan.summary.contacts.updated, 1);
+});
+
+test('rejects a learning summary with personal identifiers before writing state', () => {
+  const pkg = fixture();
+  pkg.payload.clientExperiences[0].learnedRule = 'Contatar email@exemplo.com';
+  assert.throws(() => prepareClientImport(state(), pkg), /CLIENT_LEARNING_PRIVATE_FIELD_BLOCKED/);
 });
