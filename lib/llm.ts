@@ -17,13 +17,20 @@ export type LlmResult = {
 };
 
 export class LlmProviderError extends Error {
+  status?: number;
+  provider: 'groq' | 'openrouter';
+  retryAfter?: string | null;
+
   constructor(
     message: string,
-    public status?: number,
-    public provider: 'groq' | 'openrouter' = 'groq',
-    public retryAfter?: string | null,
+    status?: number,
+    provider: 'groq' | 'openrouter' = 'groq',
+    retryAfter?: string | null,
   ) {
     super(message);
+    this.status = status;
+    this.provider = provider;
+    this.retryAfter = retryAfter;
   }
 }
 
