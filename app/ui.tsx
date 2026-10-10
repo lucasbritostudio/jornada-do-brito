@@ -961,6 +961,54 @@ function Work({ state }: { state: WorkspaceState }) {
               </div>
             ))}
           </div>
+
+          <div
+            className="card"
+            style={{ marginTop: 16 }}
+          >
+            <h3>Padrões que a Jornada aprendeu</h3>
+            {state.professionalPatterns.filter(
+              (item) => item.status === 'active',
+            ).length ? (
+              <div className="list">
+                {state.professionalPatterns
+                  .filter((item) => item.status === 'active')
+                  .slice(0, 12)
+                  .map((pattern) => (
+                    <div
+                      className="row"
+                      key={pattern.id}
+                    >
+                      <div className="row-main">
+                        <div className="row-title">
+                          {pattern.title}
+                        </div>
+                        <div className="row-sub">
+                          {pattern.summary}
+                        </div>
+                        {pattern.recommendation && (
+                          <div
+                            className="row-sub"
+                            style={{ marginTop: 6 }}
+                          >
+                            Próxima regra: {pattern.recommendation}
+                          </div>
+                        )}
+                      </div>
+                      <span className="badge">
+                        {pattern.evidenceCount} evidência(s)
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            ) : (
+              <div className="empty">
+                A Jornada começa a mostrar padrões quando existir
+                repetição suficiente no histórico. Um caso isolado
+                não vira regra.
+              </div>
+            )}
+          </div>
         </>
       )}
     </>

@@ -9,6 +9,7 @@ import {
   type LlmMessage,
 } from '@/lib/llm';
 import { safeSystemPolicy, sanitizeForLlm } from '@/lib/ai-policy';
+import { CINEMA_DECISION_RULE, VIDEO_PROFESSIONAL_METHOD } from '@/lib/professional-method';
 import {
   JORNADA_TOOLS,
   createActionProposal,
@@ -19,7 +20,112 @@ import {
 
 export const runtime = 'nodejs';
 
-function compactContext(state: Awaited<ReturnType<typeof getState>>) {
+function shouldIncludeVideoMethod(prompt: string) {
+  return /(video|vídeo|grava|film|capta|enquadra|composi|luz|audio|áudio|gimbal|take|roteiro|loca[cç][aã]o)/i.test(
+    prompt,
+  );
+}
+
+function clientContext(
+  state: Awaited<ReturnType<typeof getState>>,
+  prompt: string,
+) {
+  const lower = prompt.toLocaleLowerCase('pt-BR');
+  const named = state.contacts.filter((contact) =>
+    lower.includes(contact.name.toLocaleLowerCase('pt-BR')),
+  );
+  const wantsClients = /cliente|trabalho|projeto|negocia|garreto|berg|juliany|max|naiara|tarcisio|tarcísio/i.test(
+    prompt,
+  );
+  if (!named.length && !wantsClients) return [];
+
+  const contacts = named.length ? named : state.contacts.slice(0, 12);
+  return contacts.slice(0, 12).map((contact) => {
+    const experiences = state.clientExperiences
+      .filter(
+        (item) =>
+          item.contactId === contact.id ||
+          item.clientLabel
+            .toLocaleLowerCase('pt-BR')
+            .includes(contact.name.toLocaleLowerCase('pt-BR')),
+      )
+      .slice(0, 4);
+
+    const projects = state.projects
+      .filter((item) => item.contactId === contact.id)
+      .slice(0, 4);
+
+    const patterns = state.professionalPatterns
+      .filter(
+        (item) =>
+          item.status === 'active' &&
+          item.contactId === contact.id,
+      )
+      .slice(0, 4);
+
+    return {
+      name: sanitizeForLlm(contact.name),
+      company: contact.company
+        ? sanitizeForLlm(contact.company)
+        : undefined,
+      role: contact.role
+        ? sanitizeForLlm(contact.role)
+        : undefined,
+      lifecycle: contact.lifecycle,
+      nextAction: contact.nextAction
+        ? sanitizeForLlm(contact.nextAction)
+        : undefined,
+      risks: contact.risks?.map(sanitizeForLlm).slice(0, 5),
+      opportunities: contact.opportunities
+        ?.map(sanitizeForLlm)
+        .slice(0, 5),
+      projects: projects.map((project) => ({
+        name: sanitizeForLlm(project.name),
+        status: project.status,
+        dueDate: project.dueDate,
+        nextAction: project.nextAction
+          ? sanitizeForLlm(project.nextAction)
+          : undefined,
+      })),
+      learned: experiences.map((experience) => ({
+        occurredOn: experience.occurredOn,
+        whatHappened: sanitizeForLlm(
+          experience.whatHappened,
+        ),
+        learnedRule: experience.learnedRule
+          ? sanitizeForLlm(experience.learnedRule)
+          : undefined,
+        mistakeToAvoid: experience.mistakeToAvoid
+          ? sanitizeForLlm(experience.mistakeToAvoid)
+          : undefined,
+        patternToKeep: experience.patternToKeep
+          ? sanitizeForLlm(experience.patternToKeep)
+          : undefined,
+      })),
+      patterns: patterns.map((pattern) => ({
+        title: sanitizeForLlm(pattern.title),
+        evidenceCount: pattern.evidenceCount,
+        summary: sanitizeForLlm(pattern.summary),
+        recommendation: pattern.recommendation
+          ? sanitizeForLlm(pattern.recommendation)
+          : undefined,
+      })),
+    };
+  });
+}
+
+function videoMethodContext(prompt: string) {
+  if (!shouldIncludeVideoMethod(prompt)) return undefined;
+  return {
+    decisionRule: CINEMA_DECISION_RULE,
+    sections: VIDEO_PROFESSIONAL_METHOD.map((section) => ({
+      title: section.title,
+      questions: section.questions,
+    })),
+  };
+}
+
+function compactContext(state: Awaited<ReturnType<typeof getState>>, prompt: string) {
   const month = new Date().toISOString().slice(0, 7);
   const tx = state.transactions.filter(
     (t) => t.status !== 'cancelled' && t.occurredOn.startsWith(month),
@@ -113,6 +219,20 @@ function compactContext(state: Awaited<ReturnType<typeof getState>>) {
     inboxPending: state.inbox.filter(
       (item) => item.status === 'new' || item.status === 'needs_review',
     ).length,
+    professionalPatterns: state.professionalPatterns
+      .filter((item) => item.status === 'active')
+      .slice(0, 8)
+      .map((item) => ({
+        area: item.area,
+        title: sanitizeForLlm(item.title),
+        evidenceCount: item.evidenceCount,
+        summary: sanitizeForLlm(item.summary),
+        recommendation: item.recommendation
+          ? sanitizeForLlm(item.recommendation)
+          : undefined,
+      })),
+    relevantClients: clientContext(state, prompt),
+    videoMethod: videoMethodContext(prompt),
     conversationsWaiting: state.conversations.filter(
       (c) => c.status === 'waiting_me' || c.unreadCount > 0,
     ).length,
@@ -153,7 +273,7 @@ export async function POST(req: Request) {
     }
 
     const state = await getState();
-    const context = compactContext(state);
+    const context = compactContext(state, prompt);
     const history: LlmMessage[] = Array.isArray(body?.history)
       ? body.history
           .slice(-8)
