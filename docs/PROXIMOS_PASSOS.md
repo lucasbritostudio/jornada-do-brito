@@ -1,29 +1,54 @@
 # Próximos passos
 
-## Etapa 1 — concluída
-- Conta Google dedicada criada.
-- Conta GitHub dedicada criada.
-- Repositório privado criado.
-- Fundação estática preparada.
+## Etapas concluídas
 
-## Etapa 2 — próxima
-- Criar/conectar conta Vercel dedicada.
-- Vincular somente `lucasbritostudio/jornada-do-brito`.
-- Fazer primeiro deploy gratuito.
-- Confirmar que a URL `.vercel.app` responde corretamente.
-- Confirmar que não existe serviço externo, variável secreta ou cobrança vinculada.
+### Fundação
+- conta Google dedicada;
+- conta GitHub dedicada;
+- repositório privado;
+- projeto Vercel temporário isolado;
+- deploy estático validado.
 
-## Etapa 3 — depois do deploy-base
-- Consolidar arquitetura funcional.
-- Validar telas e fluxos antes de codar.
-- Definir stack da aplicação real.
-- Só então substituir a página estática pela aplicação.
+### Arquitetura v1
+- navegação;
+- UX;
+- domínios;
+- modelo de dados;
+- financeiro;
+- CRM;
+- projetos;
+- Jornada/gamificação;
+- IA/agentes;
+- WhatsApp;
+- segurança;
+- permissões;
+- backup;
+- stack.
 
-## Não fazer agora
-- comprar domínio;
-- assinar Google Workspace;
-- criar banco pago;
-- criar Redis;
-- integrar pagamentos;
-- usar infraestrutura do Chefe da Pizza;
-- implementar regras ainda não validadas.
+## Próxima fase — implementação
+
+Ordem planejada:
+
+1. criar projeto Supabase próprio da Jornada;
+2. criar migrations, RLS e Auth;
+3. transformar a página estática em Next.js;
+4. montar design system e navegação;
+5. implementar Hoje + Quick Capture;
+6. implementar CRM/Trabalho;
+7. implementar Finanças e Dívidas;
+8. implementar Jornada;
+9. implementar IA com tools seguras;
+10. integrar WhatsApp com número real após validar coexistência;
+11. implementar exportação/backup;
+12. testes E2E, RLS, acessibilidade e restauração;
+13. deploy final e validação real.
+
+## Regras
+
+- não tocar São Francisco;
+- não tocar Chefe da Pizza;
+- nenhuma credencial em Git;
+- não conectar número real do WhatsApp antes de validar o fluxo;
+- não usar IA para ação financeira real;
+- manter custo baixo/zero enquanto for tecnicamente responsável;
+- domínio pago fica para o final.
