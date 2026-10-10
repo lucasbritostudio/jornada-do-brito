@@ -84,3 +84,20 @@ npm run import:clients:safe -- "$HOME\Downloads\jornada-clientes-v2.json"
 ```
 
 Somente confirmar importação se o PowerShell imprimir `JORNADA_CLIENTS_IMPORTED` ou `JORNADA_CLIENTS_ALREADY_IMPORTED`. Persistem bloqueios por projeto correto, backup existente, SHA-256 do lote, idempotência e escrita condicional ETag/CAS. Não instalar outra API, não refazer backup já validado, não fazer deploy nem tocar em outros projetos.
+
+
+## Importação REAL confirmada pelo proprietário — 10/10/2026
+
+**Status atualizado: IMPORTAÇÃO DO LOTE V2 EFETUADA.** Captura do PowerShell enviada pelo proprietário mostra resposta definitiva da integração Vercel CLI:
+
+- `"status":"JORNADA_CLIENTS_IMPORTED"`
+- `"batchId":"jornada-clientes-evolucao-2026-10-10-v2"`
+- `"noFinancialCollections":true`
+- `JORNADA_IMPORT_EXIT=0`
+- Importação realizada no projeto Jornada já vinculado, sem build/deploy.
+- Contagens reportadas: **5 contatos, 4 oportunidades, 3 projetos, 1 briefing de vídeo, 9 experiências de clientes e 1 anotação (inbox)**; zero registros atualizados no mesmo lote, pois eram novos.
+- O terminal ainda mostra um **novo comando de importação digitado, não executado**. **NÃO executar novamente**: o lote tem identificação idempotente, e a primeira execução já confirmou gravação.
+- O relatório de sucesso é evidência do retorno da API de Blob, mas **a validação visual da listagem após atualizar a página Trabalho → Clientes ainda pode ser útil**. Não confundir essa checagem de interface com repetir a importação.
+- Os dados do lote foram gravados no Blob de produção, enquanto **o código na `main` e deploy permanecem sem alteração**. A linha do tempo expandida `Minha evolução com este cliente` segue apenas na branch não publicada; na UI já publicada são visíveis registros/resumo de CRM e aprendizados disponíveis.
+
+**Não pedir novamente o arquivo JSON, backup ou comando de importação.** A próxima frente de trabalho é validar navegação/UX dos registros existentes sem duplicar ou substituir dados. Não publicar a branch sem autorização separada.
