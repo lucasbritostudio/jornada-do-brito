@@ -66,3 +66,21 @@ O mesmo lote validado foi exportado em JSON, com o nome curto `jornada-clientes-
 Passo simplificado: baixar `jornada-clientes-v2.json` a partir do arquivo entregue na conversa para `Downloads`; depois `git pull --ff-only` e `npm run import:clients:safe` na pasta Jornada autenticada. A importação é uma **gravação efetiva apenas dos dados de clientes da Jornada**; nenhuma mudança de código em produção ou deploy.
 
 Se não aparecer `JORNADA_CLIENTS_IMPORTED` ou `JORNADA_CLIENTS_ALREADY_IMPORTED`, não afirmar que o lote foi carregado. Esse resultado de importação ainda está pendente.
+
+
+## Correção pós-captura — estado legado do Blob, 10/10/2026
+
+O usuário fez a tentativa real via PowerShell. O diagnóstico terminou em `JORNADA_STATE_INCOMPATIBLE` / `JORNADA_IMPORT_EXIT=1` **antes de qualquer gravação**, e o painel publicou "Oportunidades: 0" e "Base limpa e pronta". Não afirmar que os registros já estão no site.
+
+**Causa corrigida:** o Blob da Jornada contém uma estrutura inicial antiga/esparsa. O importador exigia `importBatches` e todas as coleções como arrays desde o começo, enquanto o próprio `lib/store.ts` do sistema aceita e complementa arrays ausentes com `upgradeState`. Foi ajustado `scripts/import-client-merge.mjs` para tratar **somente propriedades ausentes** como arrays vazios e adicionar `importBatches` ausente, sem descartar, zerar, recriar ou substituir registros preexistentes, configurações, campos legados e movimentações financeiras. Campos presentes com tipos inválidos continuam bloqueados.
+
+**Validação:** 8/8 testes específicos do importador aprovados em Node.js 24, sandbox isolado sem rede, sessão encerrada. Nova simulação com o lote real obtido do Drive sobre estrutura propositalmente esparsa: 5 contatos, 9 experiências, 4 oportunidades, 3 projetos, 1 briefing, idempotência, preservação de finanças e campos legados, todos aprovados **sem escrever no Blob**. Não repetimos os testes gerais já concluídos.
+
+**Próxima execução única:** após atualizar a branch na pasta autenticada da Jornada, executar o **mesmo importador corrigido** apontando para o arquivo já baixado:
+
+```powershell
+git pull --ff-only
+npm run import:clients:safe -- "$HOME\Downloads\jornada-clientes-v2.json"
+```
+
+Somente confirmar importação se o PowerShell imprimir `JORNADA_CLIENTS_IMPORTED` ou `JORNADA_CLIENTS_ALREADY_IMPORTED`. Persistem bloqueios por projeto correto, backup existente, SHA-256 do lote, idempotência e escrita condicional ETag/CAS. Não instalar outra API, não refazer backup já validado, não fazer deploy nem tocar em outros projetos.
