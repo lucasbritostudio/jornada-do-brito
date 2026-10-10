@@ -44,7 +44,17 @@ Esse modo é adequado para o uso inicial de uma única pessoa. A camada de dados
 O webhook, normalização de contatos/mensagens e rota de envio estão preparados. A conexão real depende do onboarding oficial da Meta do número atual, com coexistência obrigatória com o app WhatsApp Business no iPhone.
 
 ### IA
-A Jornada já possui uma camada inteligente local que analisa prazos, conversas, dívidas, fluxo do mês e objetivos sem enviar dados para terceiros. A arquitetura de agentes especializados e LLM generativo fica pronta para ser ligada quando houver um provedor autorizado.
+A Jornada possui análise local e integração com **Groq Free** usando o modelo `openai/gpt-oss-20b`.
+
+A conexão da Groq pode ser feita dentro de **Configurações → Jornada IA**:
+- a chave é validada diretamente com a Groq;
+- é criptografada no servidor com AES-256-GCM;
+- fica em Blob privado;
+- o valor completo nunca volta para a interface;
+- contexto enviado ao LLM é reduzido ao necessário;
+- quando a Groq cair ou atingir o limite grátis, a Jornada usa análise local como fallback.
+
+OpenRouter permanece desabilitado para dados privados por padrão.
 
 ## Documentação
 
