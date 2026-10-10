@@ -9,7 +9,13 @@ export function minimizeAiContext(
 ): Record<string, unknown> {
   const finance = /finan[cç]|dinheiro|saldo|d[ií]vid|cobr|receb|paga|gasto|despesa|lucro|receita|banc[aá]ri|banco|pix|extrato|or[cç]amento|fatura|cart[aã]o|parcel/i.test(prompt);
   const clients = /cliente|contrat|negocia|or[cç]amento|briefing|propost|cobran[cç]a|projeto|trabalho|atendimento/i.test(prompt)
-    || (Array.isArray(context.relevantClients) && context.relevantClients.length > 0);
+    || (Array.isArray(context.relevantClients) &&
+      context.relevantClients.some((candidate) => {
+        const name = typeof candidate === 'object' && candidate !== null
+          ? String((candidate as { name?: unknown }).name || '').toLocaleLowerCase('pt-BR')
+          : '';
+        return name.length >= 4 && prompt.toLocaleLowerCase('pt-BR').includes(name);
+      }));
   const study = /estud|aprend|trein|aula|nota|habilidade|cinema|film|v[ií]deo|roteiro|gimbal|composi[cç]|enquadra|c[aâ]mera|grav/i.test(prompt);
   const planning = /tarefa|meta|plano|agenda|prioridade|prazo|planeja|organiza|pend[eê]ncia|hoje|amanh[aã]|semana/i.test(prompt);
   const minimal: Record<string, unknown> = {
