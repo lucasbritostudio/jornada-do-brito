@@ -1,0 +1,10 @@
+{
+  "name": "Jornada do Brito",
+  "short_name": "Jornada",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b0d10",
+  "theme_color": "#0b0d10",
+  "lang": "pt-BR",
+  "description": "Sistema pessoal de vida, trabalho, clientes e finanças."
+}
