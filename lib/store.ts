@@ -130,11 +130,21 @@ export function upgradeState(raw: unknown): WorkspaceState {
   };
 }
 
+const stateVersions = new WeakMap<WorkspaceState, string | null>();
+
+async function readVersionedJson<T>(pathname: string): Promise<{ value: T; etag: string } | null> {
+  // Bypass private Blob CDN cache before conditional writes.
+  const result = await get(pathname, { access: 'private', useCache: false });
+  if (!result) return null;
+  const value = (await new Response(result.stream).json()) as T;
+  if (!result.blob?.etag) throw new Error('BLOB_ETAG_MISSING');
+  return { value, etag: result.blob.etag };
+}
+
 async function readJson<T>(pathname: string): Promise<T | null> {
   try {
-    const result = await get(pathname, { access: 'private' });
-    if (!result) return null;
-    return (await new Response(result.stream).json()) as T;
+    const result = await readVersionedJson<T>(pathname);
+    return result?.value ?? null;
   } catch (error) {
     // Apenas um Blob ausente significa estado ainda não criado. Falhas de
     // rede, autenticação ou JSON corrompido devem interromper a operação;
@@ -161,21 +171,22 @@ export async function saveAuthRecord(record: AuthRecord) {
 }
 
 export async function getState(): Promise<WorkspaceState> {
-  const saved = await readJson<WorkspaceState>(STATE_PATH);
+  const saved = await readVersionedJson<WorkspaceState>(STATE_PATH);
   if (saved) {
-    const upgraded = upgradeState(saved);
-    if (saved.version !== CURRENT_VERSION) {
-      await writeJson(STATE_PATH, upgraded);
-    }
+    const upgraded = upgradeState(saved.value);
+    // Defer migration until a version-checked write; GET is read-only.
+    stateVersions.set(upgraded, saved.etag);
     return upgraded;
   }
-
   const initial = defaultState();
-  await writeJson(STATE_PATH, initial);
+  stateVersions.set(initial, null);
   return initial;
 }
 
 export async function saveState(input: WorkspaceState) {
+  // Reject stale snapshots across all serverless instances.
+  if (!stateVersions.has(input)) throw new Error('STATE_VERSION_REQUIRED');
+  const etag = stateVersions.get(input);
   const state = upgradeState(input);
   refreshProfessionalPatterns(state);
   const currentTime = Date.now();
@@ -183,7 +194,13 @@ export async function saveState(input: WorkspaceState) {
     .filter((item) => new Date(item.expiresAt).getTime() > currentTime)
     .slice(0, 60);
   state.updatedAt = now();
-  await writeJson(STATE_PATH, state);
+  await put(STATE_PATH, JSON.stringify(state, null, 2), {
+    access: 'private',
+    allowOverwrite: Boolean(etag),
+    ...(etag ? { ifMatch: etag } : {}),
+    contentType: 'application/json',
+    addRandomSuffix: false,
+  });
   return state;
 }
 
