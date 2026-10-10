@@ -1,4 +1,5 @@
 import { getGroqApiKey, getGroqSecretStatus } from './secrets';
+import { sanitizeForLlm } from './ai-policy';
 
 export type LlmMessage = { role: 'system' | 'user' | 'assistant'; content: string };
 
@@ -50,7 +51,9 @@ async function callOpenAICompatible(
       },
       body: JSON.stringify({
         model,
-        messages,
+        messages: messages.map((entry) => entry.role === 'user'
+          ? { ...entry, content: sanitizeForLlm(entry.content) }
+          : entry),
         temperature: 0.25,
         max_completion_tokens: 1200,
       }),
@@ -208,7 +211,9 @@ export async function generateWithJornadaTools(
       },
       body: JSON.stringify({
         model,
-        messages,
+        messages: messages.map((entry) => entry.role === 'user'
+          ? { ...entry, content: sanitizeForLlm(entry.content) }
+          : entry),
         tools,
         tool_choice: 'auto',
         temperature: 0.2,
