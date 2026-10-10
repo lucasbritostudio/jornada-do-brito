@@ -11,6 +11,7 @@ class BlobPreconditionFailedError extends Error {
 }
 let readFailure = false;
 let writeFailure = false;
+let indexWriteFailure = false;
 
 mock.module('@vercel/blob', {
   namedExports: {
@@ -28,6 +29,8 @@ mock.module('@vercel/blob', {
       allowOverwrite?: boolean; ifMatch?: string
     } = {}) => {
       if (writeFailure) throw new Error('synthetic write failure');
+      if (indexWriteFailure && pathname === 'jornada/ai-memory/index.json')
+        throw new Error('synthetic index write failure');
       const existing = etags.get(pathname);
       if (options.ifMatch && options.ifMatch !== existing)
         throw new BlobPreconditionFailedError('synthetic concurrent conflict');
@@ -42,7 +45,11 @@ mock.module('@vercel/blob', {
       return { pathname, etag };
     },
     BlobPreconditionFailedError,
-    list: async () => ({ blobs: [] }),
+    list: async (opts?: { prefix?: string }) => ({
+      blobs: [...blobs.keys()].filter((path) => !opts?.prefix || path.startsWith(opts.prefix))
+        .map((pathname) => ({ pathname })),
+      hasMore: false,
+    }),
   },
 });
 
@@ -59,6 +66,7 @@ function resetStorage() {
   etags.clear();
   readFailure = false;
   writeFailure = false;
+  indexWriteFailure = false;
 }
 
 test('memória mantém casos abertos e cria aprendizado só após solução posterior', async () => {
@@ -244,4 +252,23 @@ test('mutação pura relê o estado após conflito, sem perder alterações', as
   });
   assert.equal(count, 2);
   assert.equal((await store.getState()).profile.displayName, 'Última alteração');
+});
+
+test('memory keeps durable turn when secondary index write fails, then repairs on demand', async () => {
+  resetStorage();
+  indexWriteFailure = true;
+  const saved = await memory.recordAiTurn({
+    threadId: 'thread-pending-index-01',
+    userText: 'Conversa importante que precisa ser mantida',
+    assistantText: 'Resposta sintética',
+    outcome: 'answered',
+  });
+  assert.equal(saved.indexPending, true);
+  assert.equal((await memory.getAiThread(saved.threadId))?.turns.length, 1);
+  assert.equal(blobs.has('jornada/ai-memory/index.json'), false);
+  indexWriteFailure = false;
+  const result = await memory.reconcileAiMemoryIndex();
+  assert.deepEqual(result, { scanned: 1, repaired: 1, completed: true });
+  assert.equal((await memory.getAiMemoryStats()).threads, 1);
+  assert.equal((await memory.getAiHistory(saved.threadId)).messages.length, 2);
 });
