@@ -60,3 +60,8 @@ O novo teste isolado `node --test tests/blob-audit-guard.test.mjs` foi executado
 Além de conferir o arquivo `.vercel/project.json`, o executor seguro agora fixa `VERCEL_PROJECT_ID`, `VERCEL_ORG_ID` e `--scope` na chamada oficial da Vercel, para evitar que variáveis antigas de outro projeto desviem o comando. Não há `vercel deploy`, `put` ou `del` neste fluxo.
 
 **Estado desta entrega:** scripts e documentação publicados somente na branch. A execução do inventário dos três objetos reais permanece não realizada porque a sessão local autenticada do titular não está disponível ao executor atual. Nenhum dado de produção foi lido além dos metadados já confirmados pela integração oficial. A ferramenta é econômica e pronta para essa execução autorizada; não declarar que a auditoria histórica acabou antes de obter o relatório JSON.
+
+
+## Revisão 10/10/2026 — leitura dos três arquivos privados
+
+O auditor foi ampliado para tentar abrir **cada objeto JSON** existente em `jornada/`, incluindo `jornada/state.json`, `jornada/auth.json` e `jornada/secrets.json`, caso existam. Também examina índice e threads sem imprimir seus conteúdos. O resultado mostra apenas contagens agregadas, indicadores de integridade e número de possíveis exposições; arquivos binários não são abertos. Isso não concede acesso direto ao ChatGPT ao conteúdo; somente a sessão Vercel CLI **do titular** realiza a leitura e informa dados resumidos para revisão. Nenhuma variável/credencial é copiada para o chat, arquivo `.env` ou outro projeto. É necessário obter `npm run audit:blob:safe` concluído com código 0 na pasta `jornada-do-brito` corretamente vinculada para considerar o inventário finalizado.
