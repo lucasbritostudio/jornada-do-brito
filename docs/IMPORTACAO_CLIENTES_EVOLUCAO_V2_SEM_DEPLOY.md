@@ -41,3 +41,19 @@ O histórico é factual. Por exemplo: o acordo de Garreto não autoriza presumir
 - A importação não treina os pesos da Groq. O estado da Jornada usa essas experiências como contexto relevante quando o nome do cliente é explicitamente mencionado.
 - Como qualquer alteração de estado, requer backup prévio; o backup real já foi confirmado.
 - A importação **não executa deploy**; a interface de evolução completa permanece para publicação posterior.
+
+
+## Privacidade no sistema atualmente publicado — reforço final
+
+A versão publicada da Jornada ainda pode enviar à Groq até cinco regras recentes, mesmo em perguntas gerais. Por isso o importador trata os dados destinados a `clientExperiences` da seguinte maneira, sem alterar o documento original guardado no Drive:
+- conserva `contactId` e os fatos históricos privados, para relacionar corretamente a experiência ao cliente;
+- no campo `clientLabel` que a IA antiga utiliza em perguntas gerais, armazena apenas `Cliente atendido`, sem o nome;
+- não inclui `nextAction` nas experiências importadas, para não divulgar passos individuais de atendimento em perguntas sem relação;
+- exige que `learnedRule` não contenha links, e-mails ou sequências de 9+ números;
+- permite que o usuário veja o nome **na ficha do contato** e a cronologia por `contactId`, sem exposição genérica de nomes de terceiros ao provedor externo.
+
+**6/6 testes da mesclagem aprovados em Node24 com rede desligada**, mais 8 verificações adicionais em memória sobre o lote real (sem escrever dados), incluindo relacionamentos, privacidade e rejeição de informações pessoais. Os testes anteriores não foram repetidos à toa; somente os novos cenários foram reavaliados.
+
+O pacote fonte do Drive preserva os nomes completos para uso humano. A importação acima é deliberadamente conservadora enquanto o código de contexto seletivo aguarda futura publicação autorizada.
+
+**A importação real ainda exige execução única em PowerShell**. Não confundir teste de mesclagem com escrita no Blob de produção.
