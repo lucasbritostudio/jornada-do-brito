@@ -328,7 +328,8 @@ export async function recordAiTurn(input: {
     }
   }
   if (!persisted) throw new Error('MEMORY_THREAD_CONFLICT');
-  const { index } = await mutateIndex((index) => upsertThreadMeta(index, persisted));
+  const committedThread = persisted;
+  const { index } = await mutateIndex((index) => upsertThreadMeta(index, committedThread));
   return { threadId: id, turnId: turn.id, learningCount: index.lessons.length };
 }
 
