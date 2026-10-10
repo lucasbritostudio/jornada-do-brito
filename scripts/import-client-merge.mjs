@@ -86,6 +86,18 @@ export function prepareClientImport(currentState, pkg, date = new Date().toISOSt
     const target = getArray(state, collection);
     for (const raw of pkg.payload[collection]) {
       const src = { ...raw };
+      // The currently published V1 AI adds its five most recent learning
+      // snippets to EVERY Groq call. Until the scoped-context fix is deployed,
+      // do not let a person's name or a private follow-up leak through that
+      // generic snippet. The contactId preserves the full CRM association.
+      if (collection === 'clientExperiences') {
+        src.clientLabel = 'Cliente atendido';
+        delete src.nextAction;
+        const learning = String(src.learnedRule || '');
+        if (/https?:\/\/|@[a-z0-9.-]+|\b\d{9,}\b/i.test(learning)) {
+          throw new Error('CLIENT_LEARNING_PRIVATE_FIELD_BLOCKED');
+        }
+      }
       const key = src.importKey;
       const existing = target.find(t => t.importKey === key);
 
