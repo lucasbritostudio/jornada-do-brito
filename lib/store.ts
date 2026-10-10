@@ -179,8 +179,27 @@ export async function getState(): Promise<WorkspaceState> {
     return upgraded;
   }
   const initial = defaultState();
-  stateVersions.set(initial, null);
-  return initial;
+  // Preserve the original lazy initialization behavior. Create-once avoids
+  // silently replacing a concurrent initializer.
+  try {
+    const created = await put(STATE_PATH, JSON.stringify(initial, null, 2), {
+      access: 'private',
+      allowOverwrite: false,
+      contentType: 'application/json',
+      addRandomSuffix: false,
+    });
+    stateVersions.set(initial, created.etag);
+    return initial;
+  } catch (error) {
+    // Another request might have created the state while we were reading.
+    // Only recover by observing an actual existing state; never swallow a
+    // network, permission or malformed-JSON failure.
+    const existing = await readVersionedJson<WorkspaceState>(STATE_PATH);
+    if (!existing) throw error;
+    const upgraded = upgradeState(existing.value);
+    stateVersions.set(upgraded, existing.etag);
+    return upgraded;
+  }
 }
 
 export async function saveState(input: WorkspaceState) {
