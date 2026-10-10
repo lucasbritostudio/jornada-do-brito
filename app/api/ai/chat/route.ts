@@ -17,6 +17,10 @@ import {
   normalizeAction,
 } from '@/lib/ai-actions';
 import { registerUndoEvent } from '@/lib/undo';
+import {
+  findRelevantAiLessons,
+  recordAiTurn,
+} from '@/lib/ai-memory';
 
 export const runtime = 'nodejs';
 
@@ -278,14 +282,47 @@ export async function POST(req: Request) {
   try {
     await requireAuthenticated();
     const body = await req.json();
-    const prompt = sanitizeForLlm(String(body?.message || '').trim());
+    const prompt = sanitizeForLlm(
+      String(body?.message || '').trim(),
+    );
 
     if (!prompt) {
-      return NextResponse.json({ error: 'Mensagem vazia.' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Mensagem vazia.' },
+        { status: 400 },
+      );
     }
 
+    const rawThreadId = String(body?.threadId || '').trim();
+    const threadId = /^[a-zA-Z0-9_-]{8,120}$/.test(rawThreadId)
+      ? rawThreadId
+      : crypto.randomUUID();
+
     const state = await getState();
-    const context = compactContext(state, prompt);
+
+    let priorResolvedCases: Array<{
+      problem: string;
+      successfulResolution: string;
+      failureCount: number;
+    }> = [];
+
+    try {
+      priorResolvedCases = await findRelevantAiLessons(prompt);
+    } catch {
+      priorResolvedCases = [];
+    }
+
+    const context = {
+      ...compactContext(state, prompt),
+      priorResolvedCases: priorResolvedCases.map((item) => ({
+        problem: sanitizeForLlm(item.problem),
+        successfulResolution: sanitizeForLlm(
+          item.successfulResolution,
+        ),
+        failureCount: item.failureCount,
+      })),
+    };
+
     const history: LlmMessage[] = Array.isArray(body?.history)
       ? body.history
           .slice(-8)
@@ -305,15 +342,68 @@ export async function POST(req: Request) {
         role: 'system',
         content:
           safeSystemPolicy() +
-          '\n\nCONTEXTO MÍNIMO ESTRUTURADO DA JORNADA:\n' +
+          '\n\nCASOS RESOLVIDOS ANTERIORES são apenas referências de solução. Eles não substituem os fatos atuais e nunca devem ser tratados como dados atuais do cliente.\n\nCONTEXTO MÍNIMO ESTRUTURADO DA JORNADA:\n' +
           JSON.stringify(context),
       },
       ...history,
       { role: 'user', content: prompt },
     ];
 
+    async function respondWithMemory(
+      payload: Record<string, any>,
+      meta: {
+        outcome:
+          | 'answered'
+          | 'action'
+          | 'proposal'
+          | 'fallback'
+          | 'error';
+        provider?: string;
+        model?: string;
+        actionName?: string;
+        errorCode?: string;
+      },
+    ) {
+      const assistantText = String(
+        payload.text ||
+          payload.error ||
+          'A Jornada processou esta solicitação.',
+      ).slice(0, 8000);
+
+      try {
+        const memory = await recordAiTurn({
+          threadId,
+          userText: prompt,
+          assistantText,
+          provider: meta.provider || payload.provider || 'unknown',
+          model: meta.model || payload.model || 'unknown',
+          outcome: meta.outcome,
+          actionName: meta.actionName,
+          errorCode: meta.errorCode,
+        });
+
+        return NextResponse.json({
+          ...payload,
+          threadId: memory.threadId,
+          turnId: memory.turnId,
+          learningCount: memory.learningCount,
+          memorySaved: true,
+        });
+      } catch {
+        return NextResponse.json({
+          ...payload,
+          threadId,
+          memorySaved: false,
+        });
+      }
+    }
+
     try {
-      const result = await generateWithJornadaTools(messages, JORNADA_TOOLS);
+      const result = await generateWithJornadaTools(
+        messages,
+        JORNADA_TOOLS,
+      );
+
       audit(state, {
         action: 'ai.chat.completed',
         collection: 'ai',
@@ -352,57 +442,100 @@ export async function POST(req: Request) {
             recordId: executed.entityId,
             summary: executed.message,
           });
+
           await saveState(state);
 
-          return NextResponse.json({
-            ...result,
-            action: undefined,
-            executed: {
-              name: normalized.name,
-              message: executed.message,
-              undoToken,
-              undoMinutes: state.settings.ai.undoWindowMinutes,
+          return respondWithMemory(
+            {
+              ...result,
+              action: undefined,
+              executed: {
+                name: normalized.name,
+                message: executed.message,
+                undoToken,
+                undoMinutes:
+                  state.settings.ai.undoWindowMinutes,
+              },
+              text: executed.message,
+              fallback: false,
             },
-            text: executed.message,
-            fallback: false,
-          });
+            {
+              outcome: 'action',
+              provider: result.provider,
+              model: result.model,
+              actionName: normalized.name,
+            },
+          );
         }
 
         const action = createActionProposal(
           normalized.name,
           normalized.args,
         );
+
         audit(state, {
           action: 'ai.action.proposed',
           collection: normalized.name,
           summary: action.summary,
         });
+
         await saveState(state);
-        return NextResponse.json({
-          ...result,
-          action,
-          text: 'Preparei um registro. Confira abaixo antes de salvar.',
-          fallback: false,
-        });
+
+        return respondWithMemory(
+          {
+            ...result,
+            action,
+            text:
+              'Preparei um registro. Confira abaixo antes de salvar.',
+            fallback: false,
+          },
+          {
+            outcome: 'proposal',
+            provider: result.provider,
+            model: result.model,
+            actionName: normalized.name,
+          },
+        );
       }
 
       await saveState(state);
-      return NextResponse.json({
-        ...result,
-        fallback: false,
-      });
+
+      return respondWithMemory(
+        {
+          ...result,
+          fallback: false,
+        },
+        {
+          outcome: 'answered',
+          provider: result.provider,
+          model: result.model,
+        },
+      );
     } catch (error) {
-      if (error instanceof Error && error.message === 'FREE_LLM_NOT_CONFIGURED') {
-        return NextResponse.json({
-          text: localFallback(
-            state,
-            'A estrutura da Groq está pronta; falta apenas a chave da conta gratuita.',
-          ),
-          provider: 'local',
-          model: 'local-rules',
-          fallback: true,
-          code: 'FREE_LLM_NOT_CONFIGURED',
-        });
+      if (
+        error instanceof Error &&
+        error.message === 'FREE_LLM_NOT_CONFIGURED'
+      ) {
+        const text = localFallback(
+          state,
+          'A estrutura da Groq está pronta; falta apenas a chave da conta gratuita.',
+        );
+
+        return respondWithMemory(
+          {
+            text,
+            provider: 'local',
+            model: 'local-rules',
+            fallback: true,
+            code: 'FREE_LLM_NOT_CONFIGURED',
+          },
+          {
+            outcome: 'fallback',
+            provider: 'local',
+            model: 'local-rules',
+            errorCode: 'FREE_LLM_NOT_CONFIGURED',
+          },
+        );
       }
 
       if (error instanceof LlmProviderError) {
@@ -411,27 +544,67 @@ export async function POST(req: Request) {
           collection: 'ai',
           summary: `${error.provider} HTTP ${error.status ?? 'erro'}`,
         });
+
         await saveState(state);
-        return NextResponse.json({
-          text: localFallback(
-            state,
-            error.status === 429
-              ? 'O limite gratuito da Groq foi atingido temporariamente.'
-              : 'A Groq não respondeu, sem afetar seus dados.',
-          ),
-          provider: 'local',
-          model: 'local-rules',
-          fallback: true,
-          retryAfter: error.retryAfter,
+
+        const text = localFallback(
+          state,
+          error.status === 429
+            ? 'O limite gratuito da Groq foi atingido temporariamente.'
+            : 'A Groq não respondeu, sem afetar seus dados.',
+        );
+
+        return respondWithMemory(
+          {
+            text,
+            provider: 'local',
+            model: 'local-rules',
+            fallback: true,
+            retryAfter: error.retryAfter,
+          },
+          {
+            outcome: 'fallback',
+            provider: error.provider,
+            model: 'local-rules',
+            errorCode:
+              error.status === 429
+                ? 'RATE_LIMIT'
+                : 'PROVIDER_ERROR',
+          },
+        );
+      }
+
+      try {
+        await recordAiTurn({
+          threadId,
+          userText: prompt,
+          assistantText:
+            'A Jornada encontrou um erro interno e não concluiu esta resposta.',
+          provider: 'internal',
+          model: 'internal',
+          outcome: 'error',
+          errorCode:
+            error instanceof Error
+              ? error.name
+              : 'UNKNOWN_ERROR',
         });
+      } catch {
+        // A falha da memória nunca deve derrubar a IA.
       }
 
       throw error;
     }
   } catch (error) {
-    if (error instanceof Error && error.message === 'UNAUTHORIZED') {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    if (
+      error instanceof Error &&
+      error.message === 'UNAUTHORIZED'
+    ) {
+      return NextResponse.json(
+        { error: 'Não autorizado' },
+        { status: 401 },
+      );
     }
+
     return NextResponse.json(
       {
         error:
