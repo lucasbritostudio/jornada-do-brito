@@ -6,7 +6,7 @@
 import { spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { verifyJornadaLink } from './verify-jornada-link.mjs';
+import { verifyJornadaLink, EXPECTED_PROJECT_ID, EXPECTED_TEAM_ID } from './verify-jornada-link.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 try {
@@ -18,7 +18,7 @@ try {
 
 const command = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 const args = [
-  '--yes', 'vercel', 'env', 'run',
+  '--yes', 'vercel', '--scope', 'pizzaria-sao-francisco-contingencia', 'env', 'run',
   '--environment', 'production',
   '--', 'node', 'scripts/audit-private-blob.mjs',
 ];
@@ -26,7 +26,12 @@ const result = spawnSync(command, args, {
   cwd: root,
   stdio: 'inherit',
   shell: process.platform === 'win32',
-  env: { ...process.env, VERCEL_TELEMETRY_DISABLED: '1' },
+  env: {
+    ...process.env,
+    VERCEL_PROJECT_ID: EXPECTED_PROJECT_ID,
+    VERCEL_ORG_ID: EXPECTED_TEAM_ID,
+    VERCEL_TELEMETRY_DISABLED: '1',
+  },
   timeout: 120_000,
 });
 
