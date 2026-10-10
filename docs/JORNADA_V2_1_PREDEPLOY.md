@@ -74,3 +74,19 @@ Correções adicionais preservadas nesta branch:
 Riscos residuais de WhatsApp: duas requisições manuais independentes ainda podem solicitar a mesma mensagem; não há chave idempotente de requisição durável antes do envio Meta. Se o processo cair após a Meta aceitar, mas antes de salvar, a mensagem poderá não aparecer imediatamente no histórico até reconciliação. A V2.1 permanece dependente de smoke test real isolado e de plano de recuperação. A solução reduz duplicações, mas não garante entrega exatamente uma vez.
 
 Os testes adicionais estão ESCRITOS no GitHub; nenhuma execução integral da suíte, TypeScript ou build foi comprovada nesta rodada. NÃO DECLARAR APROVADO. Não foi feito deploy/preview, nem acesso/destruição do Blob real.
+
+
+## Validação real da branch em sandbox isolado — 10/10/2026
+
+Ambiente: Vercel Sandbox `jornada-v21-qa-isolada`, sessão `sbx_ADWZVn4dwD5XdX63r90daIepUw4P`, Node 24, 2 vCPU, 4 GB RAM, sem secrets injetados, com arquivos obtidos da branch no GitHub. Sandbox sem portas externas e não persistente (parada automaticamente ao atingir tempo-limite). Sandbox NÃO equivale a deploy, preview ou alteração de produção.
+
+Foi executado `npm install --no-audit --no-fund --ignore-scripts` para dependências locais, em seguida:
+- `npm test`: **APROVADO — 16/16 testes** (10 em `tests/v2-regression.test.ts`, 1 import, 3 retenção e 2 contratos WhatsApp). Resultados lidos do log `/tmp/jornada-test.log`, com todos os casos marcados como aprovados. Nenhuma integração real foi acionada.
+- `npx tsc --noEmit`: **APROVADO**, exit code 0.
+- `npm run build`: **APROVADO**, exit code 0. Next.js 16.4.0, compilação em 7s, TypeScript concluído, 25/25 páginas estáticas geradas. Rotas `/api/ai/retention`, `/api/webhooks/whatsapp` e `/api/whatsapp/send` incluídas no build.
+- Os testes usam mocks locais e não comprovam isolamento/autorização/consistência da instalação real do Blob nem autenticação ponta a ponta.
+- `package-lock.json` foi gerado pelo npm no sandbox (46.852 bytes, SHA-256 adca55d7a28d7a8a3e7e394709df19d012481a1a6aaf85a41f4db4d6fc288f9a), mas **não foi incorporado ao repositório** antes do ambiente efêmero parar. É pendência antes da publicação.
+- Inventário real dos objetos Blob não realizado. A operação de encaminhamento da credencial cifrada para o ambiente isolado foi bloqueada pelo controle de segurança do acesso disponível. **O bloqueio foi respeitado; nenhuma tentativa de contorno foi realizada.** Sem credencial autorizada viável não há prova de conteúdo histórico, retenção/segurança efetiva ou de smoke test autenticado.
+- A configuração Groq Data Controls/ZDR da conta não foi acessada e continua pendente.
+
+Após essa validação, o veredito de publicação permanece **NÃO PRONTO PARA DEPLOY** exclusivamente pelas verificações reais pendentes, lockfile e revisão operacional de efeitos externos. Código da branch compilou e testes sintéticos passaram. Produção intocada.
