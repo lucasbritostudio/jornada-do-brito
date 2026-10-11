@@ -5,6 +5,26 @@
 
 **Situação em 11/10:** chat da Jornada, Groq configurável e fallback local estão implementados. `lucasbritostudio/jornada-do-brito` é o repositório identificado. Projeto Vercel `prj_nZMJzmOo0jsL9tFqfpT6lqdLm3c6`, equipe `team_ZEmFS6erUu5qbXgYyze8PWdm`. Controle de clientes/produção está em Blob privado com autenticação por cookie. O app ainda **não tem tokens próprios de GitHub e Vercel**. Conectores deste ChatGPT **não passam automaticamente** a existir na aplicação hospedada: exigir instalação/autorização separada.
 
+## Princípio fundador — liberdade de criação e configuração pelo proprietário
+
+**Requisito principal confirmado pelo proprietário:** esta IA deve ser uma plataforma de desenvolvimento geral, capaz de planejar, codificar, testar e evoluir **aplicativos de diferentes tipos**, não apenas a Jornada. O proprietário deve poder **criar e modificar as próprias regras de produto**, fluxos, agentes, metodologias e critérios de qualidade dentro de cada projeto; o sistema não pode depender exclusivamente de prompts rígidos nem de um único modelo.
+
+**Liberdade de produto ≠ credenciais irrestritas:** regras comerciais e técnicas personalizáveis são diferentes das barreiras essenciais de segurança, legalidade, privacidade, segredos, aprovações e limites impostos por provedores de modelos. Nenhum modelo é infalível nem oferece garantia de código sem erros, de execução ilimitada ou de ausência de políticas externas. Não projetar recursos de desativação clandestina de guardrails ou acesso irrestrito a dados/infraestrutura.
+
+**Decisão arquitetural:** separar o mecanismo da IA de um **registro de projetos autorizados**, um **motor de políticas versionadas por projeto**, um **catálogo substituível de modelos e ferramentas**, um **ambiente de execução isolado** e um **mecanismo de validação independente**. Assim o proprietário pode testar e mudar modelos, prompts e estratégias sem reconstruir o aplicativo nem abrir mão de rollback.
+
+**Critérios exigidos para "desbloqueada para criar aplicativos":**
+- **Multiplataforma/multiprojeto**: criar novos projetos e conectar múltiplos repositórios e alvos de deploy com consentimento específico por projeto; nenhum acesso a repositórios não autorizados.
+- **Criação ponta a ponta**: briefing conversacional → arquitetura → arquivos → testes → revisão → integração → deploy → verificações pós-publicação; incluir sites, SaaS, painéis, automações, APIs e apps móveis segundo as ferramentas de construção selecionadas, sem prometer compatibilidade universal.
+- **Políticas personalizáveis**: editor de instruções e regras funcionais por projeto, com histórico de versões, simulação de efeitos, validação, testes e possibilidade de desfazer. O dono pode definir estilo, arquitetura, tecnologias, fluxos de aprovação mais restritivos, prazos, orçamento e preferências de modelo.
+- **Modelos substituíveis**: camada de provedores adaptável a Groq, OpenRouter ou outras APIs que o proprietário conectar, com roteamento por tarefa, avaliação comparativa, fallback e limites de custo. Não presumir "nível Astra" por simplesmente selecionar provedor gratuito.
+- **Ferramentas extensíveis**: conectores registrados com permissões declaradas; isolar ferramentas que leem dados das que alteram código ou publicam sistemas.
+- **Evolução assistida**: IA pode propor mudanças em seu próprio código e políticas funcionais numa branch de laboratório, mas **não aprova as próprias alterações nem remove controles de autenticação, limites ou auditoria**.
+- **Teste de qualidade verificável**: medir bugs reproduzidos e resolvidos, taxa de regressão, cobertura, falhas de build, tempo de resposta, custo por tarefa e sucesso dos releases. Comparar modelos com casos reais antes de ativar autonomia ampliada.
+- **Sem dependência de um só fornecedor**: prompts, histórico, políticas e ferramentas estruturadas devem ser exportáveis e substituíveis sempre que possível.
+
+**Compatibilidade com o estágio atual:** `lib/devops-policy.ts` restringe temporariamente acesso à Jornada por segurança (MVP de leitura). Essa restrição de ESCOPO não é uma limitação permanente do produto. Antes de habilitar outros aplicativos, substituir o identificador fixo por registro autenticado de projetos + allowlist dinâmica baseada na instalação autorizada do GitHub App e no projeto Vercel aprovado. Restringir por padrão todo novo projeto até o proprietário o conectar; validar isso em testes.
+
 ## 1. Modelo de uso: dois assistentes, uma conversa
 
 - **Jornada Assistente:** agenda, produção, clientes, oportunidades, dinheiro, filmagens. Nunca confundir projeção com entrada.
@@ -137,10 +157,10 @@ Uma única ação primária por momento, sem painéis intermináveis. Evitar exi
 
 **Fase 0 — arquitetura (esta entrega):** escopo, ameaça, máquina de estados e contrato de ferramentas definidos, sem acesso a credenciais. 
 **Fase 1 — leitura segura (primeiro MVP):** rota `/desenvolvimento` protegida; resumo GitHub e Vercel somente leitura, mostrando `não conectado` se falta autenticação; zero alterações em produção/arquivos.
-**Fase 2 — credenciais oficiais:** criar/instalar GitHub App limitada ao repo, autorizar Vercel API separadamente; adicionar segundo fator admin; testar escopos e revogação; nenhum token em resposta de IA.
+**Fase 2 — credenciais oficiais e registro multi-projeto:** criar/instalar GitHub App limitada ao repo, autorizar Vercel API separadamente; adicionar segundo fator admin; testar escopos e revogação; nenhum token em resposta de IA.
 **Fase 3 — execução isolada:** gerar alterações em branch via GitHub Actions; testar, revisar diff, PR; falha segura e logs sanitizados. Fazer unit/integration tests com chamadas simuladas.
 **Fase 4 — release controlada:** selecionar PR/SHA aprovado e Vercel projeto fixo, deploy, confirmar READY, health e rollback, sem preview automático; pedir aprovação novamente ao publicar.
-**Fase 5 — observabilidade e melhoria contínua:** incidentes, logs reais, correlacionar erros a releases, aprendizado técnico somente após verificação, orçamentos e análise de regressão.
+**Fase 5 — observabilidade, políticas de produto versionadas e melhoria contínua:** incidentes, logs reais, correlacionar erros a releases, aprendizado técnico somente após verificação, orçamentos e análise de regressão.
 
 **Gates antes de publicação da IA Desenvolvedora:** autenticação/CSRF, bloqueio total de mutações sem segundo fator, escopo validado, test suite + TypeScript + build, simulação de falha/concorrência, teste mobile; produção só após revisão e autorização do proprietário.
 
