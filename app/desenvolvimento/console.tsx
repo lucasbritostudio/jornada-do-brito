@@ -39,6 +39,7 @@ export default function DevelopmentConsole(){
  const [planningReferences,setPlanningReferences]=useState(false);
  const [planningEvidenceLevel,setPlanningEvidenceLevel]=useState<'checked_quotes'|'source_only'|null>(null);
  const [planningEvidenceCount,setPlanningEvidenceCount]=useState(0);
+ const [planningFiles,setPlanningFiles]=useState<string[]>([]);
  const [copyStatus,setCopyStatus]=useState<'idle'|'copied'|'error'>('idle');
  async function copyAnswer(){
   if(!answer)return;
@@ -84,7 +85,7 @@ export default function DevelopmentConsole(){
  async function planChange(e:React.FormEvent){
   e.preventDefault();if(planningBusy||planningGoal.trim().length<10)return;
   setPlanningBusy(true);setPlanningResult('');setPlanningSha('');setCopyStatus('idle');setError('');
-  setPlanningEvidenceLevel(null);setPlanningEvidenceCount(0);
+  setPlanningEvidenceLevel(null);setPlanningEvidenceCount(0);setPlanningFiles([]);
   try{
    const res=await fetch('/api/desenvolvimento/plan',{
     method:'POST',headers:{'Content-Type':'application/json'},
@@ -98,6 +99,7 @@ export default function DevelopmentConsole(){
    setPlanningReferences(Boolean(json.evidenceSupported));
    setPlanningEvidenceLevel(json.evidenceLevel==='checked_quotes'?'checked_quotes':'source_only');
    setPlanningEvidenceCount(Number.isInteger(json.evidenceCount)?json.evidenceCount:0);
+   setPlanningFiles(Array.isArray(json.filesExamined)?json.filesExamined.filter((p:unknown)=>typeof p==='string'&&p.length<220).slice(0,2):[]);
   }catch(e){setError(e instanceof Error?e.message:'Falha ao preparar o plano.');}
   finally{setPlanningBusy(false);}
  }
@@ -166,6 +168,7 @@ export default function DevelopmentConsole(){
      </button>
     </div>
     <small>Versão do código: {planningSha.slice(0,12)} · {planningPartial?'Fonte parcial, com trechos omitidos':'Fonte examinada por inteiro'}</small>
+     {planningFiles.length>0&&<small>Arquivos consultados ({planningFiles.length}): {planningFiles.join(' · ')}</small>}
      <small>{planningEvidenceLevel==='checked_quotes'?`Laboratório 2.0 · ${planningEvidenceCount} citação(ões) conferida(s) literalmente; interpretação ainda precisa de revisão.`:planningEvidenceLevel==='source_only'?'Laboratório 2.0 · mostrando linhas reais; análise da IA não foi confirmada.':planningReferences?'A IA citou linhas presentes no código; conclusões em revisão.':'Sem diagnóstico confirmado.'}</small>
     {copyStatus==='error'&&<small role="alert">Não foi possível copiar automaticamente. Selecione o texto abaixo e copie manualmente.</small>}
     <p>{planningResult}</p>
