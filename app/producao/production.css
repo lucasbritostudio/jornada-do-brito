@@ -63,3 +63,25 @@
 .pr-loading{padding:30px;color:#aebdc3}
 @media(max-width:920px){.pr-main-grid{grid-template-columns:1fr}.pr-side{grid-template-columns:1fr 1fr}}
 @media(max-width:700px){.pr-shell{padding:18px 13px 110px}.pr-rule{grid-template-columns:1fr;gap:0}.pr-rule div{border-right:0;border-bottom:1px solid #385347;padding:12px 0}.pr-rule div:last-child{border:0}.pr-metrics{grid-template-columns:1fr 1fr}.pr-metrics article:last-child{grid-column:span 2}.pr-side{grid-template-columns:1fr}.pr-card{padding:15px}.pr-work{padding:13px}.pr-work-title{flex-wrap:wrap}.pr-dates{gap:5px}.pr-dates div{padding:8px}.pr-dates dd{font-size:11px}.pr-metrics article{padding:14px}}
+
+
+.pr-assistant-card{margin:10px 0 17px;border:1px solid #547154;background:linear-gradient(130deg,#192d26,#182528);border-radius:20px;padding:21px;display:grid;gap:14px}
+.pr-assistant-card h2{font-size:clamp(23px,3vw,29px);letter-spacing:-.035em;margin:6px 0}
+.pr-assistant-card p{font-size:13px;line-height:1.6;color:#bed0c6;margin:7px 0 0}
+.pr-assistant-card>small{font-size:11px;line-height:1.5;color:#a3b8ab}
+.pr-assistant-form{display:flex;gap:10px;align-items:stretch}
+.pr-assistant-form textarea{flex:1;width:100%;min-width:0;padding:15px;border-radius:13px;background:#0d1c18;color:#f3f5f2;border:1px solid #496251;resize:vertical;font:inherit;font-size:15px;line-height:1.5}
+.pr-assistant-form textarea:focus{outline:2px solid #b6e888;outline-offset:2px}
+.pr-assistant-form button{align-self:stretch;min-width:175px;border:none;border-radius:12px;background:#d4eb99;color:#1d2b20;font-weight:800;font-size:13px;padding:13px;cursor:pointer}
+.pr-assistant-form button:disabled{opacity:.5;cursor:not-allowed}
+.pr-assistant-answer{border:1px solid #668c70;background:#223c30;border-radius:10px;padding:14px;color:#e1f2df!important;margin:0!important}
+@media(max-width:700px){
+ .pr-assistant-card{padding:18px 15px;margin-bottom:12px}
+ .pr-assistant-form{display:grid;gap:10px}
+ .pr-assistant-form button{min-width:0;min-height:48px}
+ .pr-rule{margin-bottom:12px}
+ .pr-rule div{padding:6px 0}
+ .pr-rule div:last-child{display:none}
+ .pr-rule b{font-size:19px;margin:5px 0}
+ .pr-rule small{font-size:10px}
+}
