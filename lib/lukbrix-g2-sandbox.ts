@@ -3,7 +3,7 @@
  * Motor puro, sem acesso a GitHub, rede, chaves, banco ou Vercel.
  * NUNCA compila nem executa texto produzido por uma IA. Testa só políticas fixas.
  */
-import {evaluateBrionPromotion,type BrionBenchmarkCounts} from './brion-research';
+import {evaluateBrionPromotion} from './brion-research';
 
 export type LukbrixCase={
  id:string;label:'true'|'false';sourceLine:string;quote:string;claim:string;
@@ -126,7 +126,7 @@ export function runLukbrixG2Experiment(
    const aScore=a.holdout.falseRejected+a.holdout.trueAccepted;
    const bScore=b.holdout.falseRejected+b.holdout.trueAccepted;
    if(aScore!==bScore)return bScore-aScore;
-   return Number(a.policy.rejectAbsence)-Number(b.policy.rejectAbsence);
+   return Number(b.policy.rejectAbsence)-Number(a.policy.rejectAbsence);
   });
  return {
   generation:'G2 — simulação isolada',status:'candidate_only',
@@ -144,6 +144,8 @@ export const LUKBRIX_G2_SAMPLE_TRAIN:readonly LukbrixCase[]=[
  {id:'train-false-refresh',label:'false',sourceLine:'const refresh=useCallback(async()=>{},[]);',
   quote:'const refresh=useCallback',claim:'Definir refresh com useCallback',
   verifiedFacts:['refresh_uses_callback']},
+ {id:'train-false-absence',label:'false',sourceLine:'async function ask(){ /* intentionally incomplete */ }',
+  quote:'async function ask()',claim:'ask sem verificação de status',verifiedFacts:[]},
  {id:'train-true-status',label:'true',sourceLine:'if(!r.ok)throw new Error("HTTP");',
   quote:'if(!r.ok)throw',claim:'O código já verifica r.ok',
   verifiedFacts:['ask_has_r_ok']},
@@ -161,6 +163,8 @@ export const LUKBRIX_G2_SAMPLE_HOLDOUT:readonly LukbrixCase[]=[
  {id:'hold-false-refresh',label:'false',sourceLine:'const refresh=useCallback(async()=>{},[]);',
   quote:'const refresh=useCallback',claim:'É necessário adicionar useCallback em refresh',
   verifiedFacts:['refresh_uses_callback']},
+ {id:'hold-false-absence',label:'false',sourceLine:'async function refresh(){ return null; }',
+  quote:'async function refresh()',claim:'falta verificação de erro',verifiedFacts:[]},
  {id:'hold-true-status',label:'true',sourceLine:'if(!r.ok)throw new Error("bad");',
   quote:'if(!r.ok)throw',claim:'Existe verificação explícita de status',
   verifiedFacts:['ask_has_r_ok']},
