@@ -43,10 +43,12 @@ test('títulos iguais, IDs duplicados, desbalanceamento e fontes inválidas não
  }:x);
  assert.throws(()=>evaluateG2RouteChallenges(dangerous),/G2_GRAPH_INVALID_SOURCE/);
 });
-test('desafio da query com token não pode ecoar o segredo',()=>{
+test('rótulo V1 histórico da query está desatualizado; a URL aponta à mesma rota e não ecoa o segredo',()=>{
  const raw=G2_ENGINEERING_V1.find(x=>x.id==='engineering-b09-query-string');
  assert.ok(raw);
  const result=evaluateG2RouteChallenges(G2_ENGINEERING_V1);
  assert.ok(!JSON.stringify(result).includes('synthetic-secret'));
- assert.equal(result.results.find(x=>x.id===raw.id)?.predictedRouteLink,false);
+ assert.equal(result.results.find(x=>x.id===raw.id)?.predictedRouteLink,true);
+ // Preservamos o rótulo V1 antigo sem reescrever dados para melhorar a nota.
+ assert.deepEqual(result.falseLinks,['engineering-b09-query-string']);
 });
