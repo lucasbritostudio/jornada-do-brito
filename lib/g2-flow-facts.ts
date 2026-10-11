@@ -84,10 +84,11 @@ export function inspectG2ControlFlow(input:GraphSource,name:string):G2FlowInspec
    if(bindingName&&ts.isBlock(enclosing)){
     for(const statement of enclosing.statements){
      if(statement.getStart(sf)>=n.getStart(sf))break;
-     scan(statement,x=>{
-      if(isFetchAwait(x)&&ts.isIdentifier(x.name)&&x.name.text===bindingName)
-       hasFetchBinding=true;
-     });
+     if(ts.isVariableStatement(statement)){
+      for(const decl of statement.declarationList.declarations)
+       if(isFetchAwait(decl)&&ts.isIdentifier(decl.name)&&decl.name.text===bindingName)
+        hasFetchBinding=true;
+     }
     }
    }
    const branchThrows=ts.isThrowStatement(n.thenStatement)||
