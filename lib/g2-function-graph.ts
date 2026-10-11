@@ -184,8 +184,8 @@ export function buildG2FunctionGraph(sources:readonly GraphSource[]):FunctionGra
    const current=index.get(call.owner);
    if(!current)continue;
    let target:GraphSymbol|undefined,ambiguity=false;
-   if(call.shadowed){
-    gaps.push({path,line:call.line,symbol:call.namespace??call.target,reason:'ambiguous_binding'});
+   if(call.namespace&&call.shadowed){
+    gaps.push({path,line:call.line,symbol:call.namespace,reason:'ambiguous_binding'});
     continue;
    }
    if(call.namespace){
@@ -211,8 +211,10 @@ export function buildG2FunctionGraph(sources:readonly GraphSource[]):FunctionGra
     });
     const best=ordered[0];
     if(ordered.length>1&&best&&ordered[1].parent===best.parent)ambiguity=true;
-    if(best&&!ambiguity)target=best;
-    else if(!best&&!ambiguity){
+    // Parâmetro/variável local pode ocultar uma função do topo do módulo.
+    if(best&&!ambiguity&&!(call.shadowed&&best.parent===null))
+     target=best;
+    else if(!best&&!ambiguity&&!call.shadowed){
      const imp=info.imports.get(call.target);
      if(imp){
       const dest=parsed.get(imp.file),ref=dest?.exports.get(imp.exportName);
@@ -220,7 +222,7 @@ export function buildG2FunctionGraph(sources:readonly GraphSource[]):FunctionGra
       else gaps.push({path,line:call.line,symbol:call.target,reason:'not_exported'});
      }
     }
-    if(ambiguity)gaps.push({path,line:call.line,symbol:call.target,reason:'ambiguous_binding'});
+    if(ambiguity||call.shadowed&&!target)gaps.push({path,line:call.line,symbol:call.target,reason:'ambiguous_binding'});
    }
    if(target)addEdge(current.id,target.id,'call',path,call.line);
   }
