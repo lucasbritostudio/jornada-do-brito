@@ -59,6 +59,21 @@ export function buildPlanningEvidence(source:string,maxChars=7800):PlanningEvide
  };
 }
 
+/** Divide amostras por linhas para respeitar o limite de 5 mil caracteres por mensagem da IA. */
+export function splitPlanningEvidence(excerpt:string,maxChars=3500):string[]{
+ const parts:string[]=[],lines=excerpt.split('\n');
+ let part='';
+ for(const line of lines){
+  if(line.length>maxChars)throw new Error('DEVOPS_EVIDENCE_LINE_TOO_LONG');
+  if(part&&part.length+line.length+1>maxChars){
+   parts.push(part);part='';
+  }
+  part+=(part?'\n':'')+line;
+ }
+ if(part)parts.push(part);
+ return parts;
+}
+
 /** Uma análise só pode citar linhas realmente enviadas ao modelo. */
 export function proposalReferencesEvidence(text:string,visibleLines:number[]):boolean{
  const cited=[...text.matchAll(/\bL(\d{1,5})\b/g)].map(match=>Number(match[1]));
