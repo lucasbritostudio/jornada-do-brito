@@ -38,3 +38,7 @@ Os exemplos atuais de treino/holdout são pequenos e sintéticos: não comprovam
 ## Publicação
 
 **Não realizar merge nem deploy desta G2 sem autorização nova e avaliação controlada.** A G1 permanece na `main`. O G2 pode ser testado e evoluído por PRs isoladas até a avaliação final.
+
+## Indicador de roteiro
+
+G1 está disponível em produção e G2 está na fase experimental. Isso representa **1/4 (25%) das quatro etapas arquiteturais publicadas**, não 25% de inteligência superior. A G2 só conta como concluída depois de avaliação e publicação separadas; G3 e G4 são propostas futuras. Não existe uma porcentagem científica para chegar a uma suposta 'super IA suprema'.
