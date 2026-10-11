@@ -41,3 +41,27 @@ Este experimento mede **o verificador determinístico de afirmações**, e não 
 - **Custos e governança:** executar só nos testes do GitHub, sem novas chamadas LLM e sem preview Vercel. Candidatos permanecem na PR até evidência suficiente e autorização explícita.
 
 **Estado atual:** branch experimental G2, sem merge na `main` nem deploy. O resultado numérico melhora, mas a candidata falhou no gate; autocorreção de código/infraestrutura continua bloqueada.
+
+
+## Etapa concluída — validação composicional e operadores (11/10/2026)
+
+**Problema atacado:** uma linha de código pode comprovar a primeira oração, mas não comprovar uma promessa adicional sobre banco de dados, permissões, publicação, sincronização, sucesso no navegador ou outros efeitos. Um verificador que apenas identifica o operador podia aceitar afirmações falsas com operandos diferentes ou esconder uma segunda alegação falsa.
+
+**Solução implementada na branch (sem produção):** `lib/g2-claim-guards.ts` atua antes do verificador existente. Reconhece conectivos e efeitos adicionais como indicação de **evidência insuficiente**, em vez de aprovar toda a frase pela sua primeira metade. Reconhece um subconjunto de operações matemáticas e lógicas explícitas: soma, subtração, multiplicação, divisão, resto, potência, conjunção/disjunção, coalescência nula, comparações e igualdade estrita, negação `!` e conversão booleana `!!`. Confere operadores e números ou identificadores apresentados na afirmação; respeita a comutatividade onde existe. Não executa código nem comprova comportamento de sistema completo. Textos adversariais não viram comandos.
+
+**Evidência histórica:** os 16 casos revelados e os dois conjuntos anteriores de 24 casos permanecem em regressão. As correções foram desenvolvidas usando limitações previamente reveladas — tais resultados não podem ser vendidos como prova cega.
+
+**Nova auditoria V3, regras congeladas antes de preparar os casos:** arquivo `tests/fixtures/g2-frozen-v3.ts` (30 exemplos rotulados manualmente, 15 falsos e 15 verdadeiros). A política ficou congelada no commit `f77e01f5df19d4179b090756ffb88cc993af7c4a`. Após criar os exemplos V3, nenhuma regra de prova foi alterada; somente foi corrigida a tipagem do teste. Resultado no conjunto sintético:
+
+| Métrica | Referência | Candidata |
+|---|---:|---:|
+| Casos corretamente avaliados | 15/30 (50%) | **30/30 (100%)** |
+| Afirmações falsas retidas | 0/15 | **15/15** |
+| Afirmações verdadeiras aceitas | 15/15 | **15/15** |
+| Regressões entre acertos prévios | — | **0** |
+
+Vitórias pareadas: 15; perdas: zero. Valor *p* unilateral exato no conjunto rotulado: **0,000030517578125**. A porta matemática do conjunto V3 passou **para avaliação humana adicional**. Esses resultados refletem um verificador determinístico num conjunto pequeno, sintético e escolhido manualmente por quem desenvolveu o sistema; não demonstram 100% de generalização, 100% de verdade em novos projetos, desempenho de LLM real ou superioridade sobre especialistas. O teste não é avaliação independente conduzida por terceiro.
+
+**Verificação técnica final:** CI do GitHub Actions https://github.com/lucasbritostudio/jornada-do-brito/actions/runs/38164485740 — **166 testes aprovados, zero falhas, TypeScript e Next.js build aprovados**.
+
+**G2 não foi mesclada, implantada nem autorizada a corrigir infraestrutura automaticamente.** A PR #13 segue como rascunho, e a produção continua na versão G1/Laboratório 2.2. Próxima melhoria recomendada: parser AST real para múltiplos arquivos, avaliação humana dos rótulos, testes com programas executáveis em sandbox confiável e comparação do modelo online; tudo separado da lógica de implantação.
