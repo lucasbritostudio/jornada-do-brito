@@ -22,7 +22,8 @@ test('G2 avaliação INDEPENDENTE de 24 casos registra falhas e não publica',()
 test('o motor de prova não consulta rótulos ao analisar um problema',()=>{
  for(const x of G2_INDEPENDENT_V1){
   const original=checkG2Claim(x);
-  const inverted=checkG2Claim({...x,label:x.label==='true'?'false':'true'});
+  const relabeled={...x,label:x.label==='true'?'false':'true'};
+  const inverted=checkG2Claim(relabeled);
   assert.deepEqual(original,inverted);
  }
 });
