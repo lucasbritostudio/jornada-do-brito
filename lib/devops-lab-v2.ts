@@ -1,3 +1,5 @@
+import {contradictsVerifiedFacts,type VerifiedFact} from './devops-claims';
+
 /**
  * Laboratório V2: seleção barata de fontes e auditoria determinística de citações.
  * Este arquivo só trata TEXTO; jamais escreve em repositórios, dados ou Vercel.
@@ -134,7 +136,11 @@ export function evidencePartsV2(evidence:LabEvidence,maxChars=3400):string[]{
 }
 
 /** Resposta JSON da IA. Valida TRECHOS LITERAIS, não supõe verdade semântica. */
-export function reviewLabResponse(raw:string,evidence:LabEvidence):LabReview|null{
+export function reviewLabResponse(
+ raw:string,evidence:LabEvidence,verifiedFacts:VerifiedFact[]=[],
+ related?:LabEvidence&{path:string},
+ primaryPath=''
+):LabReview|null{
  let json:unknown;
  try{
   const cleaned=raw.trim().replace(/^\x60\x60\x60(?:json)?\s*/i,'').replace(/\s*\x60\x60\x60$/,'');
@@ -147,11 +153,15 @@ export function reviewLabResponse(raw:string,evidence:LabEvidence):LabReview|nul
  const notes:string[]=[];
  for(const finding of findings){
   if(!finding||typeof finding!=='object'||Array.isArray(finding))return null;
-  const {line,quote,interpretation}=(finding as Record<string,unknown>);
+  const {line,quote,interpretation,file}=(finding as Record<string,unknown>);
+  if(file!==undefined&&(typeof file!=='string'||file.length>220))return null;
+  const fromRelated=file!==undefined&&file!==primaryPath;
+  if(fromRelated&&(!related||file!==related.path))return null;
+  const citedEvidence=fromRelated?related:evidence;
   if(!Number.isSafeInteger(line)||typeof line!=='number'||typeof quote!=='string'||
      typeof interpretation!=='string'||quote.trim().length<9||quote.length>180||
      interpretation.length>220||!interpretation.trim())return null;
-  const code=evidence.lines[line];
+  const code=citedEvidence.lines[line];
   if(!code||code.startsWith('[LINHA')||code.includes('[LINHA DE CONFIGURAÇÃO OCULTA]')||
      /^\s*(?:\/\/|\/\*|\*|<!--|#)/.test(code))return null;
   // Texto hostil dentro de arquivos é dado, nunca prova de sucesso ou execução.
@@ -166,7 +176,8 @@ export function reviewLabResponse(raw:string,evidence:LabEvidence):LabReview|nul
   // nunca as classificamos como observação confirmada a partir de 1 citação.
   const unsupportedAbsence=/(?:\bsem\s+(?:valid|verific|chec|trat|defin|us|indic)|\bnao\s+(?:existe|ha|aparece|possui|tem|encontr|mostra|esta|verific|valid)|\bfalta\b|\bfaltando\b|\bausencia\b|\bincomplet[oa]\b|\bnao\s+foi\s+(?:definid|implementad))/i;
   if(unsupportedAbsence.test(normalize(interpretation)))return null;
-  notes.push('L'+line+': '+clean(quote)+'\n  Interpretação da IA (a revisar): '+interpretation.trim());
+  if(contradictsVerifiedFacts(interpretation,verifiedFacts))return null;
+  notes.push((file||primaryPath? (file||primaryPath)+':' : '')+'L'+line+': '+clean(quote)+'\n  Interpretação da IA (a revisar): '+interpretation.trim());
  }
  if(!Array.isArray(record.uncertain)||record.uncertain.length>3||
     !record.uncertain.every(x=>typeof x==='string'&&x.length<=190))return null;
