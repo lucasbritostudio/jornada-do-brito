@@ -18,7 +18,8 @@ test('desafio V3, congelado antes da inspeção, mede 30 casos sem selecionar re
 test('desafio V3 nunca executa código recebido nem usa rótulos para prever',()=>{
  for(const item of G2_FROZEN_V3){
   const first=checkG2Claim(item);
-  const second=checkG2Claim({...item,label:item.label==='false'?'true':'false'});
+  const relabeled={...item,label:item.label==='false'?'true':'false'};
+  const second=checkG2Claim(relabeled);
   assert.deepEqual(first,second);
   assert.equal(first.codeExecuted,false);
  }
