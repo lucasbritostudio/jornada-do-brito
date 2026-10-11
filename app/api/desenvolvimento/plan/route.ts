@@ -33,7 +33,7 @@ export async function POST(req:Request){
   let related:null|(LabEvidence&{path:string})=null;
   if(relatedPath){
    try{
-    const extra=await readPlanningSource(relatedPath,objective,source.refSha,1800);
+    const extra=await readPlanningSource(relatedPath,objective,source.refSha,1800,3000);
     related={...extra,path:relatedPath};
    }catch{related=null;}
   }
@@ -88,7 +88,7 @@ export async function POST(req:Request){
    // Fallback determinístico, sem divulgar erros privados nem gastar outra chamada.
   }
   return NextResponse.json({
-   ok:true,mode:'proposal_only',executed:false,version:'2.0',
+   ok:true,mode:'proposal_only',executed:false,version:'2.1',
    repository:DEVOPS_REPO,file,baseSha:source.refSha,
    sourceTruncated:source.truncated,sourceTotalLines:source.totalLines,
    evidenceLevel:review.evidenceLevel,evidenceSupported:review.evidenceSupported,
