@@ -41,3 +41,42 @@ Uma avaliação de IA em produção exige uma sessão autenticada da Jornada, fo
 ## Resultado decisório
 
 O motor estrutural passou **nesses 20 desafios**; a rubrica de diagnóstico está preparada para avaliações posteriores. A G2 continua no laboratório experimental, sem condições para declarar G3 ou compreensão universal de software.
+
+
+## Rodadas V2, V3 e V4 — resultados preservados
+
+As rodadas seguintes mostraram por que 20/20 na primeira amostra NÃO era prova de compreensão universal. Todos os resultados abaixo são de **um analisador AST determinístico com casos sintéticos**, não de respostas da Groq.
+
+| Rodada | Estado da amostra no momento da medição | Resultado | Erros observados |
+|---|---|---:|---|
+| V1 original | Primeira avaliação; política anterior | **20/20** | Nenhum sob a convenção de "URL com query não resolvida" |
+| V2 original | Casos novos após congelamento da política V1 | **11/16** | 5 falsos negativos: template sem interpolação, URL const, método const, reexportação, query |
+| V2 depois de correções | V2 virou regressão CONHECIDA | **16/16** | Nenhum no conjunto de desenvolvimento |
+| V3 original | Novos casos após congelar correção de V2 | **15/16** | 1 falso negativo: reexportação com caminho relativo |
+| V3 depois de correção | V3 virou regressão CONHECIDA | **16/16** | Nenhum nessa amostra conhecida |
+| V4 original | Novos casos depois de congelar correção de V3 | **11/12** | 1 falso negativo: chave computada ["method"] no objeto de opções |
+
+**Atenção — rótulo V1 incorreto para uma conclusão nova:** o registro V1 \`engineering-b09-query-string\` foi inicialmente rotulado como negativo porque a primeira regra só aceitava URL sem query. Na semântica normal de HTTP, \`/api/challenge?token=...\` continua apontando à mesma rota \`/api/challenge\`, e o valor do parâmetro não deve aparecer nos relatórios. A nova regra reconhece essa ligação; **o rótulo histórico foi mantido inalterado**, causando V1 19/20 se avaliado com a regra moderna. Esse 19/20 não demonstra regressão funcional; demonstra a inconsistência conhecida da avaliação antiga. Não ocultar nem reescrever os rótulos para fabricar um 20/20.
+
+### Implementações
+
+- \`lib/g2-static-fetch.ts\` lê AST de chamadas \`fetch\`, métodos GET/POST etc., const locais ou de módulo declaradas antes do uso, strings e templates sem interpolação, removendo a query antes de retornar a rota. Não executa expressão, resolve variáveis mutáveis nem divulga tokens.
+- \`lib/g2-function-graph.ts\` reutiliza essa resolução. \`lib/g2-causal-chain.ts\` cruza a chamada com handler exportado e também pode seguir reexportações locais explícitas por alias do projeto ou caminho relativo resolvido **somente dentro das fontes já fornecidas**.
+- \`tests/g2-static-fetch.test.ts\` testa sombra de parâmetro, const tardia, URL externa, template dinâmico, query secreta e métodos dinâmicos. \`tests/g2-causal-chain.test.ts\` ganhou testes de reexportação relativa válida, ausente e não exportada.
+- \`lib/g2-diagnostic-scoring.ts\` disponibiliza rubrica futura para respostas estruturadas de modelo: vínculo inferido, arquivo/linha, alegação de execução sem prova, necessidade de experimento, citações fabricadas. \`tests/g2-diagnostic-scoring.test.ts\` exercita a rubrica com respostas geradas LOCALMENTE a partir do próprio grafo e respostas falsas artificiais; **isso NÃO mede Groq/G1/G2 LLM**.
+
+### CI e conclusão técnica desta rodada
+
+GitHub Actions no commit de integração \`ca9b7c850f64b581a136f679bd22c8e6a83c548e\`:
+https://github.com/lucasbritostudio/jornada-do-brito/actions/runs/38171472980
+
+**SUCCESS — 246 testes aprovados, zero falhas, TypeScript e compilação Next.js aprovados.** Nenhum merge, preview, mudança de token, modelo, banco, autenticação ou produção.
+
+### Critérios NÃO cumpridos para promover de geração
+
+1. A V4 teve 11/12 acertos, não 12/12. A chave computada para \`method\` continua lacuna **sem falsa certeza**, e V4 não pode mais ser reutilizado como conjunto independente após correção futura.
+2. Todos os rótulos são criados pelo próprio desenvolvedor em código sintético. Não há auditoria humana independente, distribuição ampla de problemas, nem estimativa confiável de capacidade geral.
+3. **Nenhum destes resultados contém resposta real do modelo de linguagem Groq**, apenas parser determinístico e testes de mocks anteriores. Para testar o raciocínio de verdade são necessárias respostas do modelo sob autenticação e fonte aprovada, orçamento de chamadas, avaliações cegas e comparação pareada.
+4. Inferir ligação HTTP por AST e convenção de rota não prova causa real de defeito no navegador ou no banco.
+
+**Decisão:** G2 apta a continuar pesquisas na PR DRAFT; NÃO autoriza G3, merge, deploy ou execução de correções propostas pelo modelo sem revisão.
