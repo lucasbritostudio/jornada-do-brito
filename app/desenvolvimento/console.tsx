@@ -132,7 +132,7 @@ export default function DevelopmentConsole(){
    </div>}
    <small>Acesso de leitura. Nenhum arquivo é modificado por este formulário.</small>
   </section>
-  {error&&<p className="dc-error" role="alert">{error}</p>
+  {error&&<p className="dc-error" role="alert">{error}</p>}
   {!data?<div className="dc-loading">Conferindo conexões…</div>:<>
    <div className="dc-overview">
     <article className="dc-metric">
