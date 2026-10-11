@@ -3,7 +3,7 @@ import {requireAuthenticated} from '@/lib/auth';
 import {readProduction,changeProduction} from '@/lib/production-store';
 import {isBlobConflict} from '@/lib/blob-conflict';
 import {safeMoney,safeText,ensureValidDate,transitionAllowed,productionUrgency,
-  deadlineFor,paymentSummary,overlappingEditions,isProductionFinished,
+  deadlineFor,paymentSummary,overlappingEditions,overlappingBookings,isProductionFinished,
   type Stage,type Work} from '@/lib/production';
 
 export const runtime='nodejs';
@@ -39,6 +39,7 @@ export async function GET(){
       works:data.works.map(w=>({...w,clock:deadlineFor(w.capturedAt),
         urgency:productionUrgency(w,now),payment:paymentSummary(data,w)})),
       conflicts:overlappingEditions(data.works),
+      bookingConflicts:overlappingBookings(data.works),
       payments:data.payments,
       snapshotAt:now.toISOString()
     },{headers:{'Cache-Control':'no-store'}});
