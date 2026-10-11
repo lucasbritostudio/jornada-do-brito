@@ -82,16 +82,16 @@ export function selectLabEvidence(maskedSource:string,objective:string,maxChars=
  // Preserva a função COMPLETA solicitada, para a IA não concluir
  // "falta tratamento" por ter recebido só a linha do fetch.
  const requestedNames=['ask','refresh','copyAnswer','copyPlan','planChange']
-  .filter(name=>new RegExp('\\\\b'+name+'\\\\b','i').test(objective));
+  .filter(name=>new RegExp('\\b'+name+'\\b','i').test(objective));
  for(const name of requestedNames){
   const start=display.findIndex(line=>
    (name==='refresh'
-    ? /\\bconst refresh\\s*=\\s*useCallback\\s*\\(/.test(line)
-    : new RegExp('\\\\b(?:async\\\\s+)?function\\\\s+'+name+'\\\\s*\\\\(').test(line)));
+    ? /\bconst refresh\s*=\s*useCallback\s*\(/.test(line)
+    : new RegExp('\\b(?:async\\s+)?function\\s+'+name+'\\s*\\(').test(line)));
   if(start<0)continue;
   const endPredicate=name==='refresh'
-   ? (line:string)=>/\\},\\s*\\[\\s*\\]\\s*\\);/.test(line)
-   : (line:string)=>/^\\s*\\}\\s*;?\\s*$/.test(line);
+   ? (line:string)=>/\},\s*\[\s*\]\s*\);/.test(line)
+   : (line:string)=>/^\s*\}\s*;?\s*$/.test(line);
   const end=display.findIndex((line,i)=>i>start&&endPredicate(line));
   if(end<0||end-start>50)continue;
   const group=Array.from({length:end-start+1},(_,i)=>start+i+1);
@@ -164,7 +164,7 @@ export function reviewLabResponse(raw:string,evidence:LabEvidence):LabReview|nul
   // Uma linha presente NÃO demonstra que algo esteja ausente nas outras.
   // Afirmações de falta/ausência exigem inspeção de todo o bloco; por isso
   // nunca as classificamos como observação confirmada a partir de 1 citação.
-  const unsupportedAbsence=/\\b(?:sem\\s+(?:valid|verific|chec|trat|defin|us|indic)|n[aã]o\\s+(?:existe|ha|há|aparece|possui|tem|encontr|mostra|esta|está|verific|valid)|falta|faltando|aus[eê]ncia|incomplet[oa]|n[aã]o\\s+foi\\s+(?:definid|implementad))\\b/i;
+  const unsupportedAbsence=/(?:\bsem\s+(?:valid|verific|chec|trat|defin|us|indic)|\bnao\s+(?:existe|ha|aparece|possui|tem|encontr|mostra|esta|verific|valid)|\bfalta\b|\bfaltando\b|\bausencia\b|\bincomplet[oa]\b|\bnao\s+foi\s+(?:definid|implementad))/i;
   if(unsupportedAbsence.test(normalize(interpretation)))return null;
   notes.push('L'+line+': '+clean(quote)+'\n  Interpretação da IA (a revisar): '+interpretation.trim());
  }
