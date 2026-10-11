@@ -131,7 +131,12 @@ export function reviewLabResponse(raw:string,evidence:LabEvidence):LabReview|nul
      typeof interpretation!=='string'||quote.trim().length<9||quote.length>180||
      interpretation.length>220||!interpretation.trim())return null;
   const code=evidence.lines[line];
-  if(!code||code.startsWith('[LINHA')||code.includes('[LINHA DE CONFIGURAÇÃO OCULTA]'))return null;
+  if(!code||code.startsWith('[LINHA')||code.includes('[LINHA DE CONFIGURAÇÃO OCULTA]')||
+     /^\s*(?:\/\/|\/\*|\*|<!--|#)/.test(code))return null;
+  // Texto hostil dentro de arquivos é dado, nunca prova de sucesso ou execução.
+  if(/\b(?:ignore all|ignore previous|ignore instructions|ignore as regras)\b/i.test(quote)||
+     /\b(?:deploy|publica(?:ção|cao)|teste|arquivo)\b[\s\S]{0,30}\b(?:executad[oa]|conclu[ií]d[oa]|publicad[oa]|alterad[oa])\b/i.test(interpretation))
+   return null;
   // Normalização só de espaços: texto citado tem de estar LITERALMENTE na linha.
   const clean=(s:string)=>s.replace(/\s+/g,' ').trim();
   if(!clean(code).includes(clean(quote))||clean(quote)==='')return null;
