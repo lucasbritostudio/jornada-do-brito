@@ -24,7 +24,7 @@ const realistic:GraphSource[]=[
 ];
 test('G2 conecta chamada em UI, fronteira HTTP e função do backend sem afirmar execução',()=>{
  const r=analyzeG2CausalChain(realistic,'app/lab/client.tsx','ask','http_500');
- assert.equal(r.status,'structural_only');
+ assert.equal(r.status,'structural_only',JSON.stringify({steps:r.structuralSteps,unresolved:r.unresolved,examined:r.examinedFunctions}));
  assert.equal(r.subject.sha,sha);
  assert.ok(r.structuralSteps.some(x=>x.relation==='http_route_candidate'&&
   x.from.includes('#ask@')&&x.to.includes('app/api/lab/route.ts#POST@')&&
