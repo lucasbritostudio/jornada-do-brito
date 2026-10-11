@@ -117,7 +117,7 @@ export default function DevelopmentConsole(){
    <button onClick={refresh} disabled={busy} className="dc-refresh">{busy?'Consultando…':'Atualizar diagnóstico'}</button>
   </section>
   <section className="dc-chat">
-   <div><span className="dc-label">BRIÔN / DIAGNÓSTICO DE ENGENHARIA</span>
+   <div><span className="dc-label">LUKBRIX / DIAGNÓSTICO DE ENGENHARIA</span>
     <h2>Investigue o problema.</h2>
     <p>Aqui eu consulto resultados dos testes e publicações, não o código-fonte. Para analisar código real, use o Laboratório logo abaixo.</p>
    </div>
@@ -140,9 +140,9 @@ export default function DevelopmentConsole(){
    <small>A IA não publica nem altera código nesta etapa. Logs e informações sensíveis não são exibidos na conversa.</small>
   </section>
   <section className="dc-plan">
-   <span className="dc-label">BRIÔN / LABORATÓRIO DE PESQUISA · G1</span>
+   <span className="dc-label">LUKBRIX / LABORATÓRIO DE PESQUISA · G1</span>
    <h2>Investigar e testar uma hipótese.</h2>
-   <p>O BRIÔN investiga o código real, confere evidências e formula experimentos mensuráveis para melhorar o próprio laboratório. A geração G1 só propõe pesquisas: não edita, treina modelos ou publica automaticamente.</p>
+   <p>O LUKBRIX investiga o código real, confere evidências e formula experimentos mensuráveis para melhorar o próprio laboratório. A geração G1 só propõe pesquisas: não edita, treina modelos ou publica automaticamente.</p>
    <form onSubmit={planChange} className="dc-plan-form">
     <label htmlFor="dc-plan-file">Qual tela vamos melhorar?</label>
     <select id="dc-plan-file" value={planningFile} onChange={e=>{setPlanningFile(e.target.value);setPlanningResult('');setCopyStatus('idle');}}>
