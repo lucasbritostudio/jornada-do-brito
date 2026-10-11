@@ -1,0 +1,40 @@
+# LUKBRIX G2 — Laboratório isolado de experimentos
+
+## Objetivo e escopo
+
+A G1 (produção) só observa e **propõe hipóteses testáveis**. A G2, preparada nesta branch, acrescenta um experimento **executado exclusivamente nos testes do GitHub Actions**, sem usar credenciais, dados pessoais, banco, Vercel, prompts enviados à Groq ou arquivos de produção.
+
+A G2 neste marco **não modifica o próprio código automaticamente**. Ela gera configurações candidatas para um **verificador sintético em memória**, calcula resultados de casos rotulados e descarta soluções regressivas. Isso é uma primeira experiência real de seleção automática de melhorias numa política de verificação — não autoconsciência, autotreinamento, reengenharia irrestrita ou criação de novos modelos.
+
+## Como testa
+
+1. Define uma política de base já existente, sem rejeição de contradições de implementações previamente verificadas.
+2. Prepara candidatos de parâmetros pré-aprovados: exigir citação literal, bloquear alegações de ausência e bloquear certas recomendações contraditórias.
+3. Executa cada política num conjunto fixo de casos sintéticos identificados, com rótulos verdadeiros/falsos.
+4. Avalia resultados com contagem explícita de **falsos rejeitados** e **verdadeiros aceitos**, usando a porta de não regressão da G1.
+5. Só considera candidatos que não pioram treino **nem** validação separada (*holdout*). Classifica candidatos pelo treino; o holdout é apenas veto, para não escolhê-los por memorizar a validação.
+6. A saída é um **relatório de candidato**, nunca executável, sem alteração em produção e com revisão humana obrigatória.
+
+## Proteções
+
+- Motor puro e determinístico em `lib/lukbrix-g2-sandbox.ts`, sem `eval`, `new Function`, shell, rede, acesso a arquivos ou segredos.
+- Textos adversariais são dados; nenhum trecho vira comando.
+- Candidatos são combinações fixas de políticas de verificação, não código arbitrário gerado pelo LLM.
+- Recusa amostras inválidas, vazias, desequilibradas, duplicadas e com vazamento por ID entre treino e holdout.
+- A execução de experimentos fica dentro da CI do **pull request**, sem preview Vercel.
+- Não cria infraestrutura nova, GPU, tokens de API ou agendamento recorrente.
+
+## Como avaliar a evolução
+
+O percentual sobre **quatro gerações arquiteturais** é só um indicador de etapas construídas e não mede proximidade de uma “superinteligência” (objetivo sem escala científica de 100%).
+
+Separar rigorosamente:
+- *Completude do produto:* quais funções foram implementadas, documentadas e testadas.
+- *Qualidade do filtro:* proporção de casos rotulados classificados corretamente.
+- *Capacidade do modelo real:* análise de problemas inéditos, evidência, tempo, custo e erros; **ainda não medida pela G2 offline**.
+
+Os exemplos atuais de treino/holdout são pequenos e sintéticos: não comprovam generalização nem descobertas inéditas. Para subir níveis futuros: conjuntos maiores, cenários não vistos, avaliações cegas e revisão de especialistas.
+
+## Publicação
+
+**Não realizar merge nem deploy desta G2 sem autorização nova e avaliação controlada.** A G1 permanece na `main`. O G2 pode ser testado e evoluído por PRs isoladas até a avaliação final.
