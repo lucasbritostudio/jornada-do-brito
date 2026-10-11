@@ -157,7 +157,8 @@ export function reviewLabResponse(
   if(file!==undefined&&(typeof file!=='string'||file.length>220))return null;
   const fromRelated=file!==undefined&&file!==primaryPath;
   if(fromRelated&&(!related||file!==related.path))return null;
-  const citedEvidence=fromRelated?related:evidence;
+  // A verificação acima garante que related existe quando fromRelated é true.
+  const citedEvidence:LabEvidence=fromRelated?related!:evidence;
   if(!Number.isSafeInteger(line)||typeof line!=='number'||typeof quote!=='string'||
      typeof interpretation!=='string'||quote.trim().length<9||quote.length>180||
      interpretation.length>220||!interpretation.trim())return null;
