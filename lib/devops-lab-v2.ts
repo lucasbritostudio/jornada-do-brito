@@ -146,9 +146,14 @@ export function reviewLabResponse(raw:string,evidence:LabEvidence):LabReview|nul
     !record.uncertain.every(x=>typeof x==='string'&&x.length<=190))return null;
  if(typeof record.suggestion!=='string'||record.suggestion.length>450||
     typeof record.test!=='string'||record.test.length>300)return null;
+ // Os riscos são cenários futuros, NÃO erros já comprovados. Sem percentuais inventados.
+ const risks=record.risks===undefined?[]:record.risks;
+ if(!Array.isArray(risks)||risks.length>3||
+    !risks.every(r=>typeof r==='string'&&r.length>=10&&r.length<=220))return null;
  const text='LABORATÓRIO 2.0 — CITAÇÕES CONFERIDAS\n\n'+
   notes.join('\n\n')+
   '\n\nAinda não comprovado: '+(record.uncertain.length?record.uncertain.join(' / '):'Nenhum erro foi comprovado só pelas linhas citadas.')+
+  '\n\nO que pode dar errado (hipóteses, não fatos): '+(risks.length?risks.join(' / '):'Exige investigação antes de afirmar riscos.')+
   '\n\nSugestão para revisão: '+record.suggestion+
   '\nTeste recomendado: '+record.test+
   '\n\nCitações verificadas no código. A interpretação não foi validada como defeito. Nenhum arquivo foi alterado.';
