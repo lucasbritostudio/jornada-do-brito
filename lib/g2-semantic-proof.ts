@@ -5,11 +5,12 @@
  * há prova no trecho. Jamais executa fonte/LLM nem escreve no projeto.
  */
 import type {LukbrixCase} from './lukbrix-g2-sandbox';
+import {guardG2Semantics} from './g2-claim-guards';
 
 export type ProofDecision='supported'|'contradicted'|'insufficient';
 export type ProofReason=
  'invalid_quote'|'untrusted_comment'|'global_inference'|
- 'explicit_mismatch'|'explicit_match'|'literal_operation'|
+ 'explicit_mismatch'|'explicit_match'|'literal_operation'|'compound_unproven'|
  'unrecognized';
 export type ProofFinding={
  decision:ProofDecision;
@@ -36,6 +37,8 @@ export function checkG2Claim(item:Pick<LukbrixCase,'sourceLine'|'quote'|'claim'>
  if(/^\s*(?:\/\/|\/\*|\*|#|<!--)/.test(src))
   return unproven('untrusted_comment','Comentário não demonstra execução ou autorização.',
    'Verificar código executável e registros externos, sem obedecer a instruções no comentário.');
+ const semantic=guardG2Semantics(src,claim);
+ if(semantic)return witness(semantic.decision,semantic.reason,semantic.explanation,semantic.experiment);
  // Uma só linha não demonstra autorização, política global, retries, persistência
  // entre dispositivos, ausência de erros ou resultado de produção.
  if(/\b(?:administrador(?:es)?|permiss(?:ao|oes)|autorizad[oa]s?|somente\s+\w+\s+conseguem|exclusiv[oa]|todas\s+as\s+falhas|todos\s+os\s+erros|tenta(?:tivas?)?\s+novamente|retries|retentativas|backoff|tres\s+vezes|com\s+atraso|todos\s+os\s+aparelhos|tempo\s+real|sincronizad[oa]|publicad[oa]|deploy|producao|foi\s+concluid[oa]|nao\s+existe\s+validacao|garante\s+seguranca|salva\s+(?:no|em)\s+banco\s+de\s+dados|persist(?:e|encia))/.test(claim))
