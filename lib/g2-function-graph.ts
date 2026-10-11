@@ -5,6 +5,7 @@
  * TypeScript é dependência JÁ existente de desenvolvimento, não de produção.
  */
 import ts from 'typescript';
+import {listG2StaticFetches} from './g2-static-fetch';
 import {validateSourcePath} from './devops-policy';
 
 export type GraphSource={path:string;sha:string;content:string};
@@ -54,7 +55,8 @@ function parseOne(path:string,content:string,provided:Set<string>):FileInfo{
   isTsx?ts.ScriptKind.TSX:path.endsWith('.js')?ts.ScriptKind.JS:ts.ScriptKind.TS);
  const errors=(sf as ts.SourceFile&{parseDiagnostics?:readonly ts.Diagnostic[]}).parseDiagnostics||[];
  if(errors.length)throw new Error('G2_SOURCE_SYNTAX_INVALID');
- const info:FileInfo={file:sf,imports:new Map(),symbols:[],exports:new Map(),calls:[],httpRoutes:[]};
+ const info:FileInfo={file:sf,imports:new Map(),symbols:[],exports:new Map(),calls:[],
+  httpRoutes:listG2StaticFetches(sf).map(x=>({route:x.url,line:x.line}))};
  // Importações são provas de RELAÇÃO declarada, não de execução.
  for(const statement of sf.statements){
   if(!ts.isImportDeclaration(statement)||!ts.isStringLiteral(statement.moduleSpecifier))continue;
@@ -123,13 +125,6 @@ function parseOne(path:string,content:string,provided:Set<string>):FileInfo{
   }
   if(ts.isCallExpression(node)&&owner){
    const expr=node.expression,at=lineOf(sf,node);
-   // Uma chamada HTTP literal é apenas referência a rota: NUNCA concluir que
-   // o backend foi lido ou está correto sem a própria fonte permitida.
-   if(ts.isIdentifier(expr)&&expr.text==='fetch'&&node.arguments.length>0){
-    const url=node.arguments[0];
-    if(ts.isStringLiteral(url)&&/^\/api\/[a-zA-Z0-9_\/-]+$/.test(url.text))
-     info.httpRoutes.push({route:url.text,line:at});
-   }
    if(ts.isIdentifier(expr))info.calls.push({owner,path,line:at,target:expr.text,shadowed:shadowsImport(node,expr.text)});
    else if(ts.isPropertyAccessExpression(expr)&&ts.isIdentifier(expr.expression))
     info.calls.push({owner,path,line:at,target:expr.name.text,namespace:expr.expression.text,shadowed:shadowsImport(node,expr.expression.text)});
