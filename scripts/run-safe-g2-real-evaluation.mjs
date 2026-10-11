@@ -21,6 +21,9 @@ if(process.env.CI==='true'||process.env.GITHUB_ACTIONS==='true'){
  console.log('G2_LIVE_BLOCKED_CI');
  process.exit(4);
 }
+// Nem mesmo variáveis herdadas de outros projetos entram no subprocesso.
+const safeEnv=Object.fromEntries(Object.entries(process.env).filter(([name])=>
+ !/^(?:GROQ_|OPENROUTER_|BLOB_|JORNADA_|VERCEL_TOKEN|G2_TEST_)/.test(name)));
 const result=spawnSync(process.execPath,[
  '--env-file-if-exists=.env.g2.local',
  '--experimental-strip-types',
@@ -28,7 +31,7 @@ const result=spawnSync(process.execPath,[
  'scripts/g2-real-ai-evaluation.mts'
 ],{
  cwd:process.cwd(),stdio:'inherit',shell:false,timeout:240_000,
- env:{...process.env,VERCEL_PROJECT_ID:EXPECTED_PROJECT_ID,
+ env:{...safeEnv,VERCEL_PROJECT_ID:EXPECTED_PROJECT_ID,
   VERCEL_ORG_ID:EXPECTED_TEAM_ID}
 });
 if(result.error||result.signal){
