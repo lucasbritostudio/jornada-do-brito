@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuthenticated } from '@/lib/auth';
 import { loadCampaigns, mutateCampaigns, CampaignConflict } from '@/lib/campaign-store';
-import { positiveInteger, type InstagramSnapshot } from '@/lib/campaigns';
+import { type InstagramSnapshot } from '@/lib/campaigns';
 
 export const runtime = 'nodejs';
 const configured = () => Boolean(process.env.CAMPAIGN_IG_USER_ID && process.env.CAMPAIGN_IG_ACCESS_TOKEN);
@@ -51,7 +51,8 @@ export async function POST(req: Request) {
     const media = await graph(mediaId + '?fields=id,like_count,comments_count');
     const snapshot: InstagramSnapshot = {
       campaignId, mediaId, measuredAt: new Date().toISOString(),
-      likes:positiveInteger(media.like_count),comments:positiveInteger(media.comments_count)
+      ...(Number.isSafeInteger(media.like_count) && media.like_count >= 0 ? {likes:media.like_count} : {}),
+      ...(Number.isSafeInteger(media.comments_count) && media.comments_count >= 0 ? {comments:media.comments_count} : {})
     };
     // Media insights depend on the account permissions and media type.
     // Missing permissions must NOT become fake zeros.
@@ -66,11 +67,8 @@ export async function POST(req: Request) {
     await mutateCampaigns(latest => {
       const current = latest.campaigns.find(c => c.id === campaignId);
       if (!current || current.instagramMediaId !== mediaId) throw new Error('CAMPAIGN_CHANGED');
-      latest.instagram = [
-        snapshot,
-        ...latest.instagram.filter(item => !(item.campaignId === campaignId &&
-           item.mediaId === mediaId)).slice(0, 249),
-      ];
+      // Keep recent history so the creator can compare reach across days.
+      latest.instagram = [snapshot, ...latest.instagram].slice(0, 250);
     });
     return NextResponse.json({ ok: true, snapshot });
   } catch (e) {
