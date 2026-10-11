@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {emptyProduction,deadlineFor} from '../lib/production';
-import {mergeKnownProduction,mergeKnownContacts} from '../lib/production-onboarding';
+import {mergeKnownProduction,mergeKnownContacts,mergeKnownPipeline} from '../lib/production-onboarding';
 import {defaultState} from '../lib/store';
 import {applyProductionStage,recordProductionPayment,simpleProductionIntent,addProductionVideo} from '../lib/production-assistant';
 
@@ -9,6 +9,8 @@ test('importação inicial é idempotente e nunca cria pagamento nem contrato fi
  const p=emptyProduction(),s=defaultState();
  assert.equal(mergeKnownContacts(s),7);
  assert.equal(mergeKnownContacts(s),0);
+ assert.deepEqual(mergeKnownPipeline(s),{opportunities:4,tasks:4});
+ assert.deepEqual(mergeKnownPipeline(s),{opportunities:0,tasks:0});
  assert.equal(mergeKnownProduction(p),3);
  assert.equal(mergeKnownProduction(p),0);
  assert.equal(p.payments.length,0);
@@ -16,6 +18,7 @@ test('importação inicial é idempotente e nunca cria pagamento nem contrato fi
  assert.equal(p.works.some(x=>x.clientName.includes('Arte Print')),false);
  assert.equal(p.works.some(x=>x.clientName.includes('Mundo do Celular')),false);
  assert.equal(s.contacts.some(x=>x.name==='Arte Print (contato Alan)'&&x.lifecycle==='prospect'),true);
+ assert.equal(s.opportunities.every(o=>o.stage!=='won' && o.estimatedValueCents===undefined),true);
  assert.equal(s.transactions.length,0);
  assert.equal(s.receivables.length,0);
 });
