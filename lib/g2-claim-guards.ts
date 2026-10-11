@@ -14,8 +14,8 @@ const norm=(s:string)=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLower
 const result=(decision:G2GuardResult['decision'],reason:G2GuardResult['reason'],
  explanation:string,experiment:string):G2GuardResult=>({decision,reason,explanation,experiment});
 const ID='[a-zA-Z_$][\\w$]*';
-const compoundBoundary=/\b(?:e|mas|porem|alem\s+disso|bem\s+como)\s+(?=(?:pode|permite|consegue|garante|fica|continua|foi|sera|esta|existe|deleta|apaga|salva|persiste|sincroniza|envia|notifica|recebe|todos?|todas?|qualquer|nao|somente|apenas)\b)/;
-const extraPredicate=/(?:\be\s+(?:pode|permite|consegue|garante|fica|continua|foi|sera|esta|existe|deleta|apaga|salva|persiste|sincroniza|envia|notifica|recebe|todos?|todas?|qualquer|nao|somente|apenas)\b)|(?:\b(?:mas|porem|alem\s+disso|bem\s+como)\b)/;
+const compoundBoundary=/\b(?:e|mas|porem|alem\s+disso|bem\s+como)\s+(?=(?:pode|permite|consegue|garante|fica|continua|foi|sera|esta|existe|deleta|apaga|salva|persiste|sincroniza|envia|notifica|recebe|executa|execute|executar|roda|publica|modifica|altera|atualiza|remove|exclui|libera|todos?|todas?|qualquer|nao|somente|apenas)\b)/;
+const extraPredicate=/(?:\be\s+(?:pode|permite|consegue|garante|fica|continua|foi|sera|esta|existe|deleta|apaga|salva|persiste|sincroniza|envia|notifica|recebe|executa|execute|executar|roda|publica|modifica|altera|atualiza|remove|exclui|libera|todos?|todas?|qualquer|nao|somente|apenas)\b)|(?:\b(?:mas|porem|alem\s+disso|bem\s+como)\b)/;
 // Mesmo sem conectivo, alegação universal/futura demanda mais provas.
 const globalPredicate=/(?:\b(?:todos?\s+os?\s+(?:clientes|usuarios|aparelhos)|qualquer\s+(?:usuario|pessoa)|para\s+sempre|em\s+producao|no\s+banco\s+de\s+dados|autorizacao|permissoes|garante\s+seguranca|com\s+sucesso|sem\s+autenticacao)\b)/;
 const operationTerms=[
@@ -59,7 +59,8 @@ export function guardG2Semantics(source:string,claimRaw:string):G2GuardResult|nu
  // o valor final de variáveis desconhecidas nem efeitos colaterais.
  const binary=src.match(new RegExp('^\\s*(?:const|let|var)\\s+('+ID+')\\s*=\\s*('+ID+'|\\d+(?:\\.\\d+)?)\\s*(\\*\\*|===|!==|>=|<=|&&|\\|\\||\\?\\?|[+*/%<>-])\\s*('+ID+'|\\d+(?:\\.\\d+)?)\\s*;?\\s*$'));
  if(binary&&new RegExp('\\b'+binary[1].toLowerCase()+'\\b').test(claim)){
-  const matched=operationTerms.filter(x=>x.r.test(claim));
+  let matched=operationTerms.filter(x=>x.r.test(claim));
+  if(/\bresto da divisao\b/.test(claim))matched=matched.filter(x=>x.op==='%');
   if(matched.length!==1)return null;
   // Se a frase enumera valores numéricos, conferir os operandos também.
   const referred=claim.match(/\b(?:de|entre|com)\s+(-?\d+(?:\.\d+)?)\s+(?:e|por|com)\s+(-?\d+(?:\.\d+)?)\b/);
