@@ -125,6 +125,19 @@ export function overlappingEditions(works:Work[]) {
   return [...groups.entries()].filter(([,ids])=>ids.length>1)
     .map(([day,workIds])=>({startOfWork:day,workIds}));
 }
+export function overlappingBookings(works:Work[]) {
+  const groups=new Map<string,string[]>();
+  for(const work of works){
+    if(!work.scheduledAt||isProductionFinished(work)||work.capturedAt)continue;
+    const when=new Date(work.scheduledAt);
+    if(!Number.isFinite(when.getTime()))continue;
+    const {year,month,day}=fmtParts(when);
+    const key=[year,String(month).padStart(2,'0'),String(day).padStart(2,'0')].join('-');
+    groups.set(key,[...(groups.get(key)||[]),work.id]);
+  }
+  return [...groups.entries()].filter(([,ids])=>ids.length>1)
+    .map(([date,workIds])=>({date,workIds}));
+}
 export function ensureValidDate(input:unknown) {
   if(typeof input!=='string')throw new Error('INVALID_DATE');
   const result=new Date(input);
