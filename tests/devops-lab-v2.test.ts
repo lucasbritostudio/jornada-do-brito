@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import {safeSourceExcerpt,relatedPlanningPath} from '../lib/devops-planning';
-import {verifiedCodeFacts,contradictsVerifiedFacts} from '../lib/devops-claims';
+import {verifiedCodeFacts,contradictsVerifiedFacts,type VerifiedFact} from '../lib/devops-claims';
 import {
  selectLabEvidence,evidencePartsV2,reviewLabResponse,localLabReview
 } from '../lib/devops-lab-v2';
@@ -161,7 +161,7 @@ test('citações em segundo arquivo são conferidas por arquivo e linha corretos
  const main=selectLabEvidence('async function ask(){\n return 1;\n}','ask',700);
  const other={...selectLabEvidence('.dc-plan{color:white}\n.dc-chat{display:grid}', 'css visual',700),
   path:'app/desenvolvimento/development.css'};
- const facts=[];
+ const facts:VerifiedFact[]=[];
  const base={uncertain:[],risks:[],suggestion:'Ajustar estilos.',test:'Teste de tela.'};
  const valid=JSON.stringify({...base,findings:[{
   file:other.path,line:1,quote:'.dc-plan{color:white}',interpretation:'O seletor define cor branca.'
