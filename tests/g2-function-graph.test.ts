@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import {buildG2FunctionGraph,traceG2Function,type GraphSource} from '../lib/g2-function-graph';
+import {findG2ImportCycles} from '../lib/g2-import-cycles';
 
 const sha='a'.repeat(40);
 const synthetic:GraphSource[]=[
@@ -160,4 +161,19 @@ test('fronteira HTTP dinâmica não é inventada, nem vazamento de tokens na URL
  assert.equal(g.gaps.filter(x=>x.reason==='http_route_unexamined').length,1);
  assert.equal(g.gaps.find(x=>x.reason==='http_route_unexamined')?.symbol,'/api/works');
  assert.ok(!JSON.stringify(g).includes('not-for-logs'));
+});
+
+test('identifica ciclo de import entre três módulos, sem afirmar erro de execução',()=>{
+ const files:GraphSource[]=[
+  {path:'lib/cycles/a.ts',sha,content:"import {b} from './b';\nexport function a(){return b();}"},
+  {path:'lib/cycles/b.ts',sha,content:"import {c} from './c';\nexport function b(){return c();}"},
+  {path:'lib/cycles/c.ts',sha,content:"import {a} from './a';\nexport function c(){return a();}"}
+ ];
+ const graph=buildG2FunctionGraph(files);
+ const cycles=findG2ImportCycles(graph);
+ assert.equal(cycles.length,1);
+ assert.equal(cycles[0].imports.length,3);
+ assert.equal(cycles[0].runtimeBugConfirmed,false);
+ assert.equal(cycles[0].observation,'possible_static_import_cycle');
+ assert.equal(findG2ImportCycles(buildG2FunctionGraph(synthetic)).length,0);
 });
