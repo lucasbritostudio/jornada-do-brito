@@ -67,6 +67,17 @@ export function scoreLukbrixPolicy(cases:readonly LukbrixCase[],policy:LukbrixPo
  }
  return {falseRejected,falseTotal,trueAccepted,trueTotal};
 }
+/** Uma média melhor não pode esconder a perda de um acerto anterior. */
+function preservesCorrectCases(
+ cases:readonly LukbrixCase[],candidate:LukbrixPolicy
+):boolean{
+ return cases.every(sample=>{
+  const shouldReject=sample.label==='false';
+  const baselineCorrect=reject(sample,LUKBRIX_G2_BASELINE)===shouldReject;
+  const candidateCorrect=reject(sample,candidate)===shouldReject;
+  return !baselineCorrect||candidateCorrect;
+ });
+}
 function verifyDataset(samples:readonly LukbrixCase[],tag:string){
  if(samples.length<4||samples.length>64)throw new Error('LUKBRIX_INVALID_'+tag);
  const ids=new Set<string>();
@@ -115,8 +126,8 @@ export function runLukbrixG2Experiment(
   const holdVerdict=evaluateBrionPromotion(baseHold,valid);
   return {
    policy:{...policy},train,holdout:valid,
-   trainPass:trainVerdict.candidatePassesGate,
-   holdoutPass:holdVerdict.candidatePassesGate,
+   trainPass:trainVerdict.candidatePassesGate&&preservesCorrectCases(training,policy),
+   holdoutPass:holdVerdict.candidatePassesGate&&preservesCorrectCases(holdout,policy),
    improved:trainVerdict.improved||holdVerdict.improved,
   };
  });
