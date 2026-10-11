@@ -1,6 +1,7 @@
 import {githubReadToken} from './devops-github-app';
 import {DEVOPS_REPO,safeDiagnosticLine,validateSourcePath} from './devops-policy';
 import {selectLabEvidence} from './devops-lab-v2';
+import {verifiedCodeFacts} from './devops-claims';
 
 /**
  * Fase inicial do executor: permite examinar somente código de INTERFACE
@@ -132,7 +133,7 @@ export function completePlanningText(text:string,maxChars=3600):string{
   '\n\n[Resposta abreviada. Peça uma análise mais específica para obter os detalhes.]';
 }
 
-export async function readPlanningSource(path:string,objective=''){
+export async function readPlanningSource(path:string,objective='',requestedSha?:string){
  if(!allowedPlanningPath(path))throw new Error('DEVOPS_PATH_NOT_ALLOWED');
  const token=await githubReadToken();
  const root='https://api.github.com/repos/'+DEVOPS_REPO;
@@ -145,25 +146,43 @@ export async function readPlanningSource(path:string,objective=''){
  const controller=new AbortController();
  const timeout=setTimeout(()=>controller.abort(),8500);
  try{
-  const branch=await fetch(root+'/branches/main',{headers,signal:controller.signal,cache:'no-store'});
-  if(!branch.ok)throw new Error('DEVOPS_GITHUB_READ_FAILED');
-  const b=await branch.json();
-  if(typeof b?.commit?.sha!=='string'||!/^[0-9a-f]{40}$/.test(b.commit.sha))
+  let refSha=requestedSha;
+  if(!refSha){
+   const branch=await fetch(root+'/branches/main',{headers,signal:controller.signal,cache:'no-store'});
+   if(!branch.ok)throw new Error('DEVOPS_GITHUB_READ_FAILED');
+   const b=await branch.json();
+   refSha=b?.commit?.sha;
+  }
+  if(typeof refSha!=='string'||!/^[0-9a-f]{40}$/.test(refSha))
    throw new Error('DEVOPS_INVALID_SOURCE');
-  // Ler pelo SHA imutável impede que a fonte e o commit informado sejam diferentes.
-  const source=await fetch(root+'/contents/'+path+'?ref='+b.commit.sha,{
+  // Mesmo commit para arquivo principal e arquivos acompanhantes.
+  const source=await fetch(root+'/contents/'+path+'?ref='+refSha,{
    headers,signal:controller.signal,cache:'no-store'
   });
   if(!source.ok)throw new Error('DEVOPS_GITHUB_READ_FAILED');
   const f=await source.json();
-  if(typeof b?.commit?.sha!=='string'||!/^[0-9a-f]{40}$/.test(b.commit.sha)||
-      f.type!=='file'||typeof f.content!=='string'||
+  if(f.type!=='file'||typeof f.content!=='string'||
       f.encoding!=='base64'||Number(f.size)>22_000)
    throw new Error('DEVOPS_INVALID_SOURCE');
   const data=Buffer.from(f.content.replace(/\s+/g,''),'base64').toString('utf-8');
   if(data.length>22_000)throw new Error('DEVOPS_SOURCE_TOO_LARGE');
   // V2: seleção pelo objetivo, sem enviar arquivos completos ou chamar a IA mais vezes.
-  const evidence=selectLabEvidence(safeSourceExcerpt(data,data.length+1000),objective);
-  return {path,refSha:b.commit.sha,blobSha:safeDiagnosticLine(f.sha,40),...evidence};
+  const masked=safeSourceExcerpt(data,data.length+1000);
+  const evidence=selectLabEvidence(masked,objective);
+  const staticFacts=verifiedCodeFacts(masked,path,objective);
+  return {path,refSha,blobSha:safeDiagnosticLine(f.sha,40),staticFacts,...evidence};
  }finally{clearTimeout(timeout);}
+}
+
+/** Apenas pares de interface já autorizados; nunca consulta backend sem revisão. */
+export function relatedPlanningPath(path:string,objective:string):PlannableFile|null{
+ if(!/(?:css|visual|estilo|layout|responsiv|tela|apar[eê]ncia|cores?|card|arquivos? relacionados?|multi.?arquiv)/i.test(objective))
+  return null;
+ const companions:Partial<Record<PlannableFile,PlannableFile>>={
+  'app/desenvolvimento/console.tsx':'app/desenvolvimento/development.css',
+  'app/desenvolvimento/development.css':'app/desenvolvimento/console.tsx',
+  'app/producao/dashboard.tsx':'app/producao/production.css',
+  'app/producao/production.css':'app/producao/dashboard.tsx'
+ };
+ return companions[path as PlannableFile]??null;
 }
