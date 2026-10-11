@@ -155,3 +155,13 @@ test('experimento recusado se estiver vazio, desequilibrado ou duplicado',async(
  await assert.rejects(evaluateG2RuntimeExperiment(transitions.slice(0,3)
   .concat(transitions.slice(1,4))),/INVALID_PROBE/);
 });
+
+test('G2 rejeita controle de regressão já quebrado na referência — veto contra falsa evolução',async()=>{
+ const impossibleControl=transitions.map(p=>p.id==='transition-regression-approve'?
+  {...p,expected:'valor impossível sintético'}:p);
+ const report=await evaluateG2RuntimeExperiment(impossibleControl);
+ assert.deepEqual(report.invalidBaselineControls,['transition-regression-approve']);
+ assert.equal(report.acceptedForFurtherReview,false);
+ assert.equal(report.causalFinding,'not_supported_by_trial');
+ assert.equal(report.deployAuthorized,false);
+});
