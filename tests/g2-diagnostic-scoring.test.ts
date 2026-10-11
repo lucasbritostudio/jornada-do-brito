@@ -20,14 +20,14 @@ function staticCandidateAnswers():G2DiagnosticAnswer[]{
   };
  });
 }
-test('rubrica aceita respostas estruturadas conservadoras com evidência validada',()=>{
+test('rubrica avalia referência estrutural e expõe inconsistência do rótulo histórico V1',()=>{
  const predictions=staticCandidateAnswers();
  const result=gradeG2DiagnosticAnswers(G2_ENGINEERING_V1,predictions);
  assert.equal(result.total,20);
- assert.equal(result.correctRoutePredictions,20);
- assert.equal(result.safeCorrectCount,20);
- assert.equal(result.validEvidenceCount,10);
- assert.deepEqual(result.falseRouteAssertions,[]);
+ assert.equal(result.correctRoutePredictions,19);
+ assert.equal(result.safeCorrectCount,19);
+ assert.equal(result.validEvidenceCount,11);
+ assert.deepEqual(result.falseRouteAssertions,['engineering-b09-query-string']);
  assert.deepEqual(result.missedRouteCandidates,[]);
  assert.deepEqual(result.fabricatedCitations,[]);
  assert.deepEqual(result.runtimeOverclaims,[]);
@@ -55,10 +55,10 @@ test('rubrica rejeita linha falsa e confirmação indevida mesmo com acerto de l
  answers[positive].citedRoute={path:'app/challenges/screen.tsx',line:999999};
  answers[positive].claimedRuntimeCauseConfirmed=true;
  const r=gradeG2DiagnosticAnswers(G2_ENGINEERING_V1,answers);
- assert.equal(r.correctRoutePredictions,20);
+ assert.equal(r.correctRoutePredictions,19);
  assert.ok(r.fabricatedCitations.includes(answers[positive].caseId));
  assert.ok(r.runtimeOverclaims.includes(answers[positive].caseId));
- assert.equal(r.safeCorrectCount,19);
+ assert.equal(r.safeCorrectCount,18);
 });
 test('leitor JSON de respostas do modelo limita formato e payloads inválidos',()=>{
  const example=staticCandidateAnswers()[0];
