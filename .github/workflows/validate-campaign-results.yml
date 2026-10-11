@@ -1,0 +1,36 @@
+name: Validar Resultados das Campanhas (sem deploy)
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: campaign-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validations:
+    name: Testes locais e TypeScript (nenhum deploy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Instalar dependências congeladas
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Verificar tipos
+        run: npx tsc --noEmit --incremental false
+      - name: Testes de regressão e campanhas
+        run: npm test
+      - name: Verificar isolamento
+        run: |
+          test ! -f .env.production
+          echo "Validação concluída sem deploy, sem conexão Meta e sem alterar dados da Jornada."
