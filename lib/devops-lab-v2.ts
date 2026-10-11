@@ -182,12 +182,18 @@ export function reviewLabResponse(
  }
  if(!Array.isArray(record.uncertain)||record.uncertain.length>3||
     !record.uncertain.every(x=>typeof x==='string'&&x.length<=190))return null;
+ // Não transmitir hipóteses que contrariem uma inspeção estática concluída.
+ if(record.uncertain.some(x=>contradictsVerifiedFacts(x,verifiedFacts)))return null;
  if(typeof record.suggestion!=='string'||record.suggestion.length>450||
     typeof record.test!=='string'||record.test.length>300)return null;
+ // Validar a recomendação, não só o trecho de código citado.
+ // Uma frase que manda adicionar o que já existe não pode ser apresentada como melhoria.
+ if(contradictsVerifiedFacts(record.suggestion,verifiedFacts))return null;
  // Os riscos são cenários futuros, NÃO erros já comprovados. Sem percentuais inventados.
  const risks=record.risks===undefined?[]:record.risks;
  if(!Array.isArray(risks)||risks.length>3||
     !risks.every(r=>typeof r==='string'&&r.length>=10&&r.length<=220))return null;
+ if(risks.some(r=>contradictsVerifiedFacts(r,verifiedFacts)))return null;
  const text='LABORATÓRIO 2.0 — CITAÇÕES CONFERIDAS\n\n'+
   notes.join('\n\n')+
   '\n\nAinda não comprovado: '+(record.uncertain.length?record.uncertain.join(' / '):'Nenhum erro foi comprovado só pelas linhas citadas.')+
