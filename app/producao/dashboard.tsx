@@ -28,6 +28,14 @@ const fmt=(v?:string)=>v?new Intl.DateTimeFormat('pt-BR',{
   timeZone:'America/Fortaleza',dateStyle:'short',timeStyle:'short'
 }).format(new Date(v)):'A definir';
 const round=(v:string)=>Math.round(Number(v.replace(/\./g,'').replace(',','.'))*100);
+const inputToIso=(value:string)=>new Date(value+'-03:00').toISOString();
+const isoToInput=(value?:string)=>value
+  ?new Intl.DateTimeFormat('sv-SE',{
+    timeZone:'America/Fortaleza',year:'numeric',month:'2-digit',day:'2-digit',
+    hour:'2-digit',minute:'2-digit',hourCycle:'h23'
+   }).format(new Date(value)).replace(' ','T')
+  :'';
+
 function displayUrgency(work:WorkView,now:number){
   if(work.stage==='delivered')return {label:'Concluído',tone:'quiet'};
   if(work.stage==='cancelled')return {label:'Cancelado',tone:'quiet'};
@@ -60,6 +68,7 @@ export default function ProductionDashboard(){
  const [payId,setPayId]=useState('');
  const [payAmount,setPayAmount]=useState('');
  const [payOp,setPayOp]=useState('');
+ const [createOp,setCreateOp]=useState('');
  const [captureId,setCaptureId]=useState('');
  const [captureAt,setCaptureAt]=useState('');
  const [customers,setCustomers]=useState<{id:string;name:string}[]>([]);
@@ -106,14 +115,15 @@ export default function ProductionDashboard(){
  }
  async function create(){
    const cents=fee.trim()?round(fee):undefined;
-   if(fee.trim()&&(!Number.isSafeInteger(cents)||cents!<0)){setError('Valor inválido.');return;}
+   if(fee.trim()&&(!Number.isSafeInteger(cents)||cents===undefined||cents<0)){setError('Valor inválido.');return;}
    const customer=customers.find(c=>c.name.trim().toLowerCase()===clientName.trim().toLowerCase());
-   const ok=await api({action:'create',operationId:createOperationId(),clientName,title,
+   const op=createOp||createOperationId();setCreateOp(op);
+   const ok=await api({action:'create',operationId:op,clientName,title,
       ...(customer?{contactId:customer.id}:{}),
       ...(cents!==undefined?{agreedFeeCents:cents}:{}),
-      ...(date?{scheduledAt:new Date(date).toISOString()}:{})
+      ...(date?{scheduledAt:inputToIso(date)}:{})
    },'Novo serviço criado como planejamento, sem inventar contrato nem pagamento.');
-   if(ok){setClientName('');setTitle('');setFee('');setDate('');}
+   if(ok){setClientName('');setTitle('');setFee('');setDate('');setCreateOp('');}
  }
  async function move(w:WorkView,to:Stage){
    if(to==='captured'){setCaptureId(w.id);setCaptureAt('');return;}
@@ -123,8 +133,8 @@ export default function ProductionDashboard(){
  async function capture(w:WorkView){
    let iso:string|undefined;
    if(captureAt){
-     const dt=new Date(captureAt);if(!Number.isFinite(dt.getTime())){setError('Data inválida.');return;}
-     iso=dt.toISOString();
+     const dt=new Date(captureAt+'-03:00');if(!Number.isFinite(dt.getTime())){setError('Data inválida.');return;}
+     iso=inputToIso(captureAt);
    }
    const ok=await api({action:'stage',workId:w.id,stage:'captured',...(iso?{capturedAt:iso}:{})},'Gravação concluída. Prazo de 72 horas iniciado no dia seguinte.');
    if(ok){setCaptureId('');setCaptureAt('');}
@@ -203,11 +213,11 @@ export default function ProductionDashboard(){
      <header className="pr-card-header"><div><span className="pr-mini">NOVO TRABALHO</span><h2>Adicionar vídeo</h2></div></header>
      <p className="pr-description">Um cadastro para cada vídeo, mesmo dentro de pacotes com quatro entregas. Cadastrar aqui não significa contrato fechado.</p>
      <div className="pr-form">
-      <label>Cliente<input list="pr-customer" value={clientName} maxLength={120} onChange={e=>setClientName(e.target.value)} placeholder="Nome do cliente"/></label>
+      <label>Cliente<input list="pr-customer" value={clientName} maxLength={120} onChange={e=>{setClientName(e.target.value);setCreateOp('');}} placeholder="Nome do cliente"/></label>
       <datalist id="pr-customer">{customers.map(c=><option key={c.id} value={c.name}/>)}</datalist>
-      <label>Serviço / vídeo<input value={title} maxLength={160} onChange={e=>setTitle(e.target.value)} placeholder="Ex.: Garreto — vídeo 01"/></label>
-      <label>Valor acordado (R$) <small>Deixe vazio se não foi aprovado</small><input inputMode="decimal" value={fee} onChange={e=>setFee(e.target.value)} placeholder="Sem valor aprovado"/></label>
-      <label>Gravação prevista <small>Opcional, não inicia o relógio</small><input type="datetime-local" value={date} onChange={e=>setDate(e.target.value)}/></label>
+      <label>Serviço / vídeo<input value={title} maxLength={160} onChange={e=>{setTitle(e.target.value);setCreateOp('');}} placeholder="Ex.: Garreto — vídeo 01"/></label>
+      <label>Valor acordado (R$) <small>Deixe vazio se não foi aprovado</small><input inputMode="decimal" value={fee} onChange={e=>{setFee(e.target.value);setCreateOp('');}} placeholder="Sem valor aprovado"/></label>
+      <label>Gravação prevista <small>Opcional, não inicia o relógio</small><input type="datetime-local" value={date} onChange={e=>{setDate(e.target.value);setCreateOp('');}}/></label>
       <button disabled={busy||clientName.trim().length<2||title.trim().length<3} onClick={create}>Cadastrar vídeo</button>
      </div>
     </section>
@@ -229,7 +239,7 @@ function EditWork({w,busy,save,close}:{w:WorkView;busy:boolean;save:(p:Record<st
  const [name,setName]=useState(w.title);
  const [notes,setNotes]=useState(w.notes||'');
  const [fee,setFee]=useState(w.agreedFeeCents===undefined?'':String(w.agreedFeeCents/100).replace('.',','));
- const [scheduled,setScheduled]=useState(w.scheduledAt?new Date(w.scheduledAt).toISOString().slice(0,16):'');
+ const [scheduled,setScheduled]=useState(w.scheduledAt?isoToInput(w.scheduledAt):'');
  return <div className="pr-inline pr-edit">
   <strong>Editar dados do serviço</strong>
   <label>Nome<input value={name} onChange={e=>setName(e.target.value)}/></label>
@@ -241,7 +251,7 @@ function EditWork({w,busy,save,close}:{w:WorkView;busy:boolean;save:(p:Record<st
     if(cents!==null&&(!Number.isSafeInteger(cents)||cents<0))return;
     const ok=await save({action:'update',workId:w.id,title:name,notes,
       agreedFeeCents:cents,
-      ...(['planned','scheduled'].includes(w.stage)?{scheduledAt:scheduled?new Date(scheduled).toISOString():''}:{})
+      ...(['planned','scheduled'].includes(w.stage)?{scheduledAt:scheduled?inputToIso(scheduled):''}:{})
     },'Dados atualizados.');
     if(ok)close();
   }}>Salvar edição</button><button className="pr-btn-light" onClick={close}>Fechar</button>
