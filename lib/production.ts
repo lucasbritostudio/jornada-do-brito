@@ -17,6 +17,7 @@ export type Work = {
   scheduledAt?: string;
   capturedAt?: string;
   reviewSentAt?: string;
+  firstReviewSentAt?: string;
   approvedAt?: string;
   deliveredAt?: string;
   agreedFeeCents?: number;
@@ -91,6 +92,12 @@ export function productionUrgency(work:Work,now=new Date()) {
   if(isProductionFinished(work))return 'finished' as const;
   const clock=deadlineFor(work.capturedAt);
   if(!clock)return 'not_started' as const;
+  if(work.firstReviewSentAt){
+    if(work.stage==='review')return 'waiting_client' as const;
+    if(['editing','changes_requested'].includes(work.stage))return 'revisions' as const;
+    return new Date(work.firstReviewSentAt).getTime()>new Date(clock.dueAt).getTime()
+      ? 'sent_late' as const:'sent_on_time' as const;
+  }
   const nowMs=now.getTime();
   if(nowMs>=new Date(clock.dueAt).getTime())return 'overdue' as const;
   if(nowMs>=new Date(clock.targetAt).getTime())return 'at_risk' as const;
