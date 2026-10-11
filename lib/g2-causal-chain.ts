@@ -7,6 +7,7 @@
  * Somente analisa fontes fornecidas, com SHA idêntico e escopo do grafo G2.
  */
 import ts from 'typescript';
+import {inspectG2ControlFlow,type G2FlowFact} from './g2-flow-facts';
 import {
  buildG2FunctionGraph,traceG2Function,type GraphSource,type GraphSymbol,
  type GraphEdge,type GraphGap
@@ -30,6 +31,7 @@ export type G2CausalReport={
  status:'structural_only'|'partial_sources'|'ambiguous_entry';
  subject:{path:string;name:string;sha:string;scenario:G2CausalScenario};
  examinedFunctions:{id:string;path:string;name:string;line:number}[];
+ flowSyntaxFacts:G2FlowFact[];
  structuralSteps:G2CausalStep[];
  unresolved:GraphGap[];
  hypotheses:G2CausalHypothesis[];
@@ -113,7 +115,7 @@ export function analyzeG2CausalChain(
  const root=traceG2Function(graph,path,name,4);
  const subject={path,name,sha:graph.sha,scenario};
  const base:Omit<G2CausalReport,'status'>={
-  subject,examinedFunctions:[],structuralSteps:[],unresolved:[],hypotheses:[],
+  subject,examinedFunctions:[],flowSyntaxFacts:[],structuralSteps:[],unresolved:[],hypotheses:[],
   testsNotRun:[],runtimeOutcomeVerified:false,causeConfirmed:false,
   filesModified:false,deployAllowed:false
  };
@@ -178,7 +180,10 @@ export function analyzeG2CausalChain(
   testsNotRun.push('Confirmar roteamento HTTP, autenticação, conteúdo e status reais em testes de integração; convenção de pasta não prova execução.');
  if(unresolved.length)
   testsNotRun.push('Examinar apenas as dependências autorizadas que faltam, fixando o mesmo SHA; nunca afirmar ausência funcional.');
+ const entrySource=sourceMap.get(path);
+ const flowSyntaxFacts=entrySource?inspectG2ControlFlow(entrySource,name).facts:[];
  return {...base,status:unresolved.length?'partial_sources':'structural_only',
+  flowSyntaxFacts,
   examinedFunctions:graph.symbols.filter(s=>visited.has(s.id)).map(s=>
    ({id:s.id,path:s.path,name:s.name,line:s.startLine})).slice(0,48),
   structuralSteps:limited,unresolved:unresolved.slice(0,48),
