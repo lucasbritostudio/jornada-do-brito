@@ -80,3 +80,18 @@ test('V2 conteúdo adversarial é tratado como dado, não pode se declarar prova
  assert.ok(!fallback.text.includes('PUBLICAÇÃO CONCLUÍDA'));
 
 });
+
+test('V2 distingue riscos previstos de defeitos reais e não inventa porcentagens',()=>{
+ const e=selectLabEvidence('const busy = false;\n<button disabled={busy}>Aguarde</button>', 'carregamento',1000);
+ const item={findings:[{line:1,quote:'const busy = false;',interpretation:'O estado busy começa falso.'}],
+  uncertain:['Não foi demonstrado travamento real.'],
+  risks:['Se a rede demorar, a pessoa pode esperar sem entender; prevenir com feedback de carregamento.'],
+  suggestion:'Exibir informação clara durante a consulta.',test:'Simular rede lenta sem mudar produção.'};
+ const result=reviewLabResponse(JSON.stringify(item),e);
+ assert.ok(result);
+ assert.match(result!.text,/O que pode dar errado \(hipóteses, não fatos\)/);
+ assert.match(result!.text,/prevenir com feedback/);
+ assert.match(result!.text,/Interpretação da IA \(a revisar\)/);
+ assert.equal(reviewLabResponse(JSON.stringify({...item,risks:['curto']}),e),null);
+ assert.equal(reviewLabResponse(JSON.stringify({...item,risks:[item.risks[0],item.risks[0],item.risks[0],item.risks[0]]}),e),null);
+});
