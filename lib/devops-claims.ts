@@ -67,7 +67,7 @@ export function contradictsVerifiedFacts(interpretation:string,facts:VerifiedFac
  const hasCopyCatch=facts.some(f=>f.meaning.includes('tratamento de exceção'));
  // Limitar cada avaliação à oração, sem apagar a contradição com uma frase
  // verdadeira anterior. Ex.: "r.ok já existe, mas ask não valida status".
- const clauses=text.split(/\b(?:mas|porem|contudo|entretanto)\b|[.;\n]/g).filter(Boolean);
+ const clauses=text.split(/\b(?:mas|porem|contudo|entretanto)\b|[;\n]|\.(?=\s|$)/g).filter(Boolean);
  return clauses.some(raw=>{
   const c=raw.trim();
   const unnecessary=/\bnao\s+(?:e\s+)?(?:necessari[oa]|precisa|precisamos|deve|deveria)\s+(?:de\s+)?(?:adicionar|criar|implementar|definir|incluir|usar|verificar|validar|checar)\b/.test(c)||
