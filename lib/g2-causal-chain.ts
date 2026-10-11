@@ -61,10 +61,22 @@ function findReexport(
   if(match.length!==1)continue;
   const original=match[0].propertyName?.text??match[0].name.text;
   const spec=stmt.moduleSpecifier.text;
-  // Não inferir caminhos arbitrários ou bibliotecas externas, exigir fonte
-  // explicitamente fornecida, mesmo SHA, e export real.
-  if(!spec.startsWith('@/'))continue;
-  const base=spec.slice(2);
+  // Apenas alias de origem ou caminho RELATIVO literal. Sem leitura de disco.
+  let base:string|null=null;
+  if(spec.startsWith('@/'))base=spec.slice(2);
+  else if(spec.startsWith('./')||spec.startsWith('../')){
+   const pathSegments=route.path.split('/').slice(0,-1);
+   let valid=true;
+   for(const segment of spec.split('/')){
+    if(!segment||segment==='.')continue;
+    if(segment==='..'){
+     if(pathSegments.length===0){valid=false;break;}
+     pathSegments.pop();
+    }else pathSegments.push(segment);
+   }
+   if(valid)base=pathSegments.join('/');
+  }
+  if(!base)continue;
   const targetFile=[base,base+'.ts',base+'.tsx',base+'/index.ts'].find(p=>sources.has(p));
   if(!targetFile)continue;
   const candidates=symbols.filter(x=>x.path===targetFile&&x.parent===null&&
