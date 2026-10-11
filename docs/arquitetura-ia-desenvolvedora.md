@@ -25,6 +25,16 @@
 
 **Compatibilidade com o estágio atual:** `lib/devops-policy.ts` restringe temporariamente acesso à Jornada por segurança (MVP de leitura). Essa restrição de ESCOPO não é uma limitação permanente do produto. Antes de habilitar outros aplicativos, substituir o identificador fixo por registro autenticado de projetos + allowlist dinâmica baseada na instalação autorizada do GitHub App e no projeto Vercel aprovado. Restringir por padrão todo novo projeto até o proprietário o conectar; validar isso em testes.
 
+
+## Estado de integração após autorização inicial (11/10/2026)
+
+- GitHub App **Jornada Brito Dev** criada pelo proprietário (App ID público `5273402`), instalada na conta `lucasbritostudio`, instalação ID público `170248864` com permissão **somente de leitura** ao repositório `lucasbritostudio/jornada-do-brito`. Instalação confirmada pela tela do GitHub.
+- Chave privada `.pem` gerada, mas permanece no computador do proprietário. **Nunca enviar conteúdo do PEM ao chat, PR ou repositório.** Ela ainda precisa ser inserida como variável **sensitive/encrypted** de produção da Vercel (`JORNADA_GITHUB_APP_PRIVATE_KEY`) por interface privada do provedor. Mesmo com a variável criada, só uma integração server-side do GitHub App usando token de instalação temporário poderá ler o repositório em nome da Jornada; a chave não autoriza publicação sem permissão.
+- IDs públicos `JORNADA_GITHUB_APP_ID` e `JORNADA_GITHUB_INSTALLATION_ID` configurados na Vercel da Jornada no ambiente `production`; **isso não constitui conexão funcional sem autenticação por chave**.
+- A instalação permite ler Actions, Contents e Pull requests. **Não permite editar arquivos, abrir PR ou disparar Actions**. Em fase posterior, ampliar Contents/Pull requests estritamente para o repositório aprovado, reautorizar instalação e implementar aprovador forte, executor isolado e diff. Nunca presumir escrita autorizada.
+- Para operar a API da Vercel de dentro da Jornada também será necessária **credencial própria da Vercel**, provisionada no servidor com escopo mínimo e sem aparecer no navegador/LLM. O conector Vercel do ChatGPT não fornece um token reutilizável ao aplicativo.
+- **Critério de saída desta fase:** Vercel confirma variável de chave presente *sem exibir valor*, o backend gera token curto de instalação, lê o commit do repositório autorizado e um workflow recente; depois conecta Vercel para ler deployments do projeto. Apenas depois construir e habilitar as ferramentas de edição/deploy.
+
 ## 1. Modelo de uso: dois assistentes, uma conversa
 
 - **Jornada Assistente:** agenda, produção, clientes, oportunidades, dinheiro, filmagens. Nunca confundir projeção com entrada.
