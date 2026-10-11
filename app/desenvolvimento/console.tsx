@@ -25,6 +25,9 @@ export default function DevelopmentConsole(){
  const [data,setData]=useState<Snapshot|null>(null);
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState('');
+ const [question,setQuestion]=useState('');
+ const [answer,setAnswer]=useState('');
+ const [asking,setAsking]=useState(false);
  const refresh=useCallback(async()=>{
   setBusy(true);setError('');
   try{
@@ -36,6 +39,20 @@ export default function DevelopmentConsole(){
   finally{setBusy(false);}
  },[]);
  useEffect(()=>{refresh();},[refresh]);
+ async function ask(e:React.FormEvent){
+  e.preventDefault();if(asking||question.trim().length<3)return;
+  setAsking(true);setAnswer('');setError('');
+  try{
+   const r=await fetch('/api/desenvolvimento/chat',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({message:question}),cache:'no-store'
+   });
+   const v=await r.json();
+   if(!r.ok)throw new Error(v.error||'IA indisponível.');
+   setAnswer(v.text);
+  }catch(e){setError(e instanceof Error?e.message:'Não foi possível analisar.');}
+  finally{setAsking(false);}
+ }
  const failures=data?.github.runs.filter(r=>r.result==='failure'||r.result==='timed_out')||[];
  const latest=data?.vercel.deployments[0];
  return <main className="dc-page">
@@ -48,6 +65,23 @@ export default function DevelopmentConsole(){
   <section className="dc-status-bar">
    <div><span className="dc-label">MODO ATUAL</span><strong>Somente leitura</strong><small>Nenhuma edição ou deploy pode ser disparado nesta versão</small></div>
    <button onClick={refresh} disabled={busy} className="dc-refresh">{busy?'Consultando…':'Atualizar diagnóstico'}</button>
+  </section>
+  <section className="dc-chat">
+   <div><span className="dc-label">ASSISTENTE DE ENGENHARIA</span>
+    <h2>Me conte o problema.</h2>
+    <p>Eu analiso os resultados disponíveis e explico o que precisa ser investigado. Edição e deploy ainda não estão liberados.</p>
+   </div>
+   <form onSubmit={ask} className="dc-chat-form">
+    <textarea rows={2} aria-label="Pergunta para IA Desenvolvedora"
+     value={question} maxLength={700}
+     placeholder="Ex.: Por que o último deploy não funcionou?"
+     onChange={e=>{setQuestion(e.target.value);setAnswer('');}}/>
+    <button type="submit" disabled={asking||question.trim().length<3}>
+     {asking?'Analisando…':'Perguntar à IA'}
+    </button>
+   </form>
+   {answer&&<p className="dc-answer" role="status">{answer}</p>}
+   <small>A IA não publica nem altera código nesta etapa. Logs e informações sensíveis não são exibidos na conversa.</small>
   </section>
   {error&&<p className="dc-error" role="alert">{error}</p>}
   {!data?<div className="dc-loading">Conferindo conexões…</div>:<>
