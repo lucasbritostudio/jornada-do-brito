@@ -77,6 +77,17 @@ export function guardG2Semantics(source:string,claimRaw:string):G2GuardResult|nu
     return result('contradicted','explicit_mismatch','Os números alegados não coincidem com os operandos.',
      'Trocar um operando e exigir mudança de avaliação.');
   }
+  // Confere operandos nomeados quando a conclusão os especifica.
+  // "a && b" NÃO autoriza concluir "a && c" só porque cita &&.
+  const named=claim.match(/\b(?:de|entre|com)\s+([a-z_$][\w$]*)\s+(?:e|por|com)\s+([a-z_$][\w$]*)\b/);
+  if(named&&/^[a-z_$]/i.test(binary[2])&&/^[a-z_$]/i.test(binary[4])){
+   const direct=named[1]===binary[2].toLowerCase()&&named[2]===binary[4].toLowerCase();
+   const reversed=['+','*','&&','||','===','!=='].includes(binary[3])&&
+    named[1]===binary[4].toLowerCase()&&named[2]===binary[2].toLowerCase();
+   if(!direct&&!reversed)
+    return result('contradicted','explicit_mismatch','Os identificadores alegados diferem dos operandos do código.',
+     'Substituir um operando por outro identificador e comparar a conclusão.');
+  }
   const correct=matched[0].op===binary[3];
   return result(correct?'supported':'contradicted',correct?'literal_operation':'explicit_mismatch',
    'A linha atribui uma expressão cujo operador é '+binary[3]+'. Não comprova resultado em produção.',
