@@ -38,6 +38,7 @@ export async function POST(req: Request) {
   try {
     await mutateCampaigns(store => {
       const campaigns = store.campaigns.filter(c => c.status === 'active');
+      let changed = false;
       for (const entry of body.entry || []) {
         for (const change of entry.changes || []) {
           if (change?.field !== 'messages') continue;
@@ -57,7 +58,7 @@ export async function POST(req: Request) {
             const time = Number(msg.timestamp);
             const occurredAt = Number.isFinite(time) && time > 0 ?
               new Date(time * 1000).toISOString() : new Date().toISOString();
-            addIfUnique(store, {
+            changed = addIfUnique(store, {
               id: crypto.randomUUID(), campaignId:campaign.id, kind:'contact',
               source:'meta_whatsapp', amountCents:0, confirmed:true,
               providerEventId:'whatsapp:'+msg.id, customerKey, occurredAt,
@@ -66,6 +67,7 @@ export async function POST(req: Request) {
           }
         }
       }
+      return changed;
     });
     // No outbound messages, no AI and no modification to the owner's WhatsApp state.
     return new Response('ok', { status: 200 });
