@@ -17,7 +17,7 @@ export type FunctionGraph={
  limitations:string[];
 };
 type ImportBinding={file:string;exportName:string;fromPath:string;line:number};
-type RawCall={owner:string;path:string;line:number;target:string;namespace?:string};
+type RawCall={owner:string;path:string;line:number;target:string;namespace?:string;shadowed:boolean};
 type FileInfo={file:ts.SourceFile;imports:Map<string,ImportBinding>;
  symbols:GraphSymbol[];exports:Map<string,string>;calls:RawCall[]};
 
@@ -73,6 +73,28 @@ function parseOne(path:string,content:string,provided:Set<string>):FileInfo{
   if(bindings&&ts.isNamespaceImport(bindings))
    info.imports.set(bindings.name.text,{file:dest,exportName:'*',fromPath:source,line:at});
  }
+ // Uma variável ou parâmetro local com o mesmo nome impede atribuir a
+ // chamada à importação homônima. Preferimos lacuna a ligação inventada.
+ function shadowsImport(node:ts.Node,name:string):boolean{
+  let parent:ts.Node|undefined=node.parent;
+  while(parent&&!ts.isSourceFile(parent)){
+   if(ts.isFunctionLike(parent)){
+    if(parent.parameters.some(param=>{
+     const id=param.name;
+     return ts.isIdentifier(id)&&id.text===name;
+    }))return true;
+   }
+   if(ts.isBlock(parent)||ts.isSourceFile(parent)){
+    for(const stmt of parent.statements){
+     if(ts.isVariableStatement(stmt)&&stmt.declarationList.declarations.some(d=>
+      ts.isIdentifier(d.name)&&d.name.text===name))return true;
+     if(ts.isFunctionDeclaration(stmt)&&stmt.name?.text===name)return true;
+    }
+   }
+   parent=parent.parent;
+  }
+  return false;
+ }
  function traverse(node:ts.Node,current:string|null){
   let owner=current,created:GraphSymbol|null=null;
   let identifier:string|null=null,exportName:string|null=null;
@@ -101,9 +123,9 @@ function parseOne(path:string,content:string,provided:Set<string>):FileInfo{
   }
   if(ts.isCallExpression(node)&&owner){
    const expr=node.expression,at=lineOf(sf,node);
-   if(ts.isIdentifier(expr))info.calls.push({owner,path,line:at,target:expr.text});
+   if(ts.isIdentifier(expr))info.calls.push({owner,path,line:at,target:expr.text,shadowed:shadowsImport(node,expr.text)});
    else if(ts.isPropertyAccessExpression(expr)&&ts.isIdentifier(expr.expression))
-    info.calls.push({owner,path,line:at,target:expr.name.text,namespace:expr.expression.text});
+    info.calls.push({owner,path,line:at,target:expr.name.text,namespace:expr.expression.text,shadowed:shadowsImport(node,expr.expression.text)});
   }
   ts.forEachChild(node,child=>traverse(child,owner));
  }
@@ -162,6 +184,10 @@ export function buildG2FunctionGraph(sources:readonly GraphSource[]):FunctionGra
    const current=index.get(call.owner);
    if(!current)continue;
    let target:GraphSymbol|undefined,ambiguity=false;
+   if(call.shadowed){
+    gaps.push({path,line:call.line,symbol:call.namespace??call.target,reason:'ambiguous_binding'});
+    continue;
+   }
    if(call.namespace){
     const imp=info.imports.get(call.namespace);
     if(!imp||imp.exportName!=='*')continue;
