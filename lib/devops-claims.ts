@@ -8,7 +8,11 @@ function functionScope(lines:string[],name:string):Scope|null{
  const named=new RegExp('^\\s*(?:async\\s+)?function\\s+'+name+'\\s*\\(');
  const start=lines.findIndex(line=>named.test(line));
  if(start<0)return null;
- const end=lines.findIndex((line,i)=>i>start&&i<=start+80&&/^\s*\}\s*;?\s*$/.test(line));
+ // Ignora fechamentos de blocos internos mais indentados.
+ const indent=(lines[start].match(/^\s*/)?.[0].length??0);
+ const end=lines.findIndex((line,i)=>i>start&&i<=start+80&&
+  /^\s*\}\s*;?\s*$/.test(line)&&
+  (line.match(/^\s*/)?.[0].length??0)<=indent);
  return end>start?{start,end}:null;
 }
 function findInScope(lines:string[],scope:Scope,pattern:RegExp):number{
@@ -61,5 +65,17 @@ export function contradictsVerifiedFacts(interpretation:string,facts:VerifiedFac
  if(facts.some(f=>f.meaning.includes('tratamento de exceção'))&&
   /(?:copyanswer|clipboard|copiar)/.test(text)&&
   /(?:nao|sem|falta|ausencia)/.test(text)&&/tratamento de erro|tratamento de excecao|catch/.test(text))return true;
+ // Também valida sugestões: recomendar implantar algo que já existe é
+ // uma conclusão errada, mesmo quando cita uma linha verdadeira.
+ if(facts.some(f=>f.meaning.includes('r.ok'))&&
+  /(?:adicionar|implementar|incluir|criar|precisa|deveria|prevenir|corrigir|sem|falta)/.test(text)&&
+  /(?:verificar|validar|checar|verificacao|validacao|checagem)/.test(text)&&
+  /(?:r\.ok|status\s*(?:http|da\s*resposta)|resposta\s*do\s*fetch)/.test(text)&&
+  !/\bja\s+(?:existe|ha|possui|faz|verifica)\b/.test(text))return true;
+ if(facts.some(f=>f.meaning.includes('refresh'))&&
+  /refresh/.test(text)&&
+  /(?:definir|criar|adicionar|usar|implementar|precisa|deveria|prevenir)/.test(text)&&
+  /usecallback/.test(text)&&
+  !/\bja\s+(?:usa|existe|possui|tem)\b/.test(text))return true;
  return false;
 }
