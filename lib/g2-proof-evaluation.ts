@@ -41,7 +41,7 @@ export function evaluateProofCandidate(cases:readonly LukbrixCase[]):PairedProof
    throw new Error('G2_INVALID_AUDIT_CASE');
   seen.add(item.id);
   const old=scoreLukbrixPolicy([item],LUKBRIX_G2_BASELINE);
-  const baselineAccepted=old.trueAccepted===1||old.falseRejected===0;
+  const baselineAccepted=item.label==='true'?old.trueAccepted===1:old.falseRejected===0;
   const finding=checkG2Claim(item);
   const candidateAccepted=finding.decision==='supported';
   return {id:item.id,label:item.label,baselineCorrect:baselineAccepted===(item.label==='true'),
