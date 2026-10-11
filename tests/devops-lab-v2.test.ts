@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
-import {safeSourceExcerpt} from '../lib/devops-planning';
+import {safeSourceExcerpt,relatedPlanningPath} from '../lib/devops-planning';
+import {verifiedCodeFacts,contradictsVerifiedFacts} from '../lib/devops-claims';
 import {
  selectLabEvidence,evidencePartsV2,reviewLabResponse,localLabReview
 } from '../lib/devops-lab-v2';
@@ -139,4 +140,50 @@ test('não transforma alegações de ausência em defeitos comprovados',()=>{
   interpretation:'Existe um teste r.ok após o fetch.'
  }]};
  assert.equal(reviewLabResponse(JSON.stringify(valid),e)?.evidenceLevel,'checked_quotes');
+});
+
+
+test('detecção estática independente desmente as falsas ausências do teste real',()=>{
+ const source=readFileSync('app/desenvolvimento/console.tsx','utf8');
+ const facts=verifiedCodeFacts(
+  safeSourceExcerpt(source,source.length+1000),
+  'app/desenvolvimento/console.tsx',
+  'Analise ask, refresh e copyAnswer; verifique resposta, carregamento e erro');
+ assert.ok(facts.some(f=>f.quote.includes('if(!r.ok)')),'r.ok real encontrado');
+ assert.ok(facts.some(f=>f.quote.includes('useCallback')),'refresh declarado');
+ assert.ok(facts.some(f=>f.quote.includes('catch')),'copyAnswer trata exceção');
+ assert.equal(contradictsVerifiedFacts('ask envia fetch sem validar status',facts),true);
+ assert.equal(contradictsVerifiedFacts('refresh não foi definido',facts),true);
+ assert.equal(contradictsVerifiedFacts('Existe uma verificação r.ok',facts),false);
+});
+
+test('citações em segundo arquivo são conferidas por arquivo e linha corretos',()=>{
+ const main=selectLabEvidence('async function ask(){\n return 1;\n}','ask',700);
+ const other={...selectLabEvidence('.dc-plan{color:white}\n.dc-chat{display:grid}', 'css visual',700),
+  path:'app/desenvolvimento/development.css'};
+ const facts=[];
+ const base={uncertain:[],risks:[],suggestion:'Ajustar estilos.',test:'Teste de tela.'};
+ const valid=JSON.stringify({...base,findings:[{
+  file:other.path,line:1,quote:'.dc-plan{color:white}',interpretation:'O seletor define cor branca.'
+ }]});
+ assert.equal(reviewLabResponse(valid,main,facts,other,'app/desenvolvimento/console.tsx')?.evidenceLevel,'checked_quotes');
+ const invalid=JSON.stringify({...base,findings:[{
+  file:'app/api/desenvolvimento/chat/route.ts',line:1,quote:'.dc-plan{color:white}',
+  interpretation:'Citação de arquivo não autorizado'
+ }]});
+ assert.equal(reviewLabResponse(invalid,main,facts,other,'app/desenvolvimento/console.tsx'),null);
+ const wrongLine=JSON.stringify({...base,findings:[{
+  file:other.path,line:2,quote:'.dc-plan{color:white}',interpretation:'Citação da linha errada'
+ }]});
+ assert.equal(reviewLabResponse(wrongLine,main,facts,other,'app/desenvolvimento/console.tsx'),null);
+});
+
+test('relacionamento de arquivos limitado a UI/CSS autorizados',()=>{
+ assert.equal(relatedPlanningPath('app/desenvolvimento/console.tsx','Melhore o visual no iPhone'),
+  'app/desenvolvimento/development.css');
+ assert.equal(relatedPlanningPath('app/desenvolvimento/console.tsx','Verifique ask e r.ok'),null);
+ assert.equal(relatedPlanningPath('app/producao/dashboard.tsx','Analise layout dos cartões'),
+  'app/producao/production.css');
+ assert.equal(relatedPlanningPath('lib/auth.ts','melhore o visual'),null);
+ assert.equal(relatedPlanningPath('app/globals.css','melhore o visual'),null);
 });
