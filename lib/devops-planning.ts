@@ -1,5 +1,6 @@
 import {githubReadToken} from './devops-github-app';
 import {DEVOPS_REPO,safeDiagnosticLine,validateSourcePath} from './devops-policy';
+import {selectLabEvidence} from './devops-lab-v2';
 
 /**
  * Fase inicial do executor: permite examinar somente código de INTERFACE
@@ -22,7 +23,7 @@ export function validPlanningObjective(input:unknown):input is string{
 }
 export function safeSourceExcerpt(source:string,max=2800):string{
  if(typeof source!=='string')return '';
- const exclude=/\b(?:password|passwd|senha|secret|private_key|token|api[_-]?key)\b\s*[:=]/i;
+ const exclude=/\b(?:password|passwd|senha|secret|private[_-]?key|token|access[_-]?token|client[_-]?secret|api[_-]?key|authorization|bearer)\b\s*[:=]/i;
  return source.split('\n').map(s=>exclude.test(s)?'[LINHA DE CONFIGURAÇÃO OCULTA]':s)
   .join('\n').slice(0,max);
 }
@@ -131,7 +132,7 @@ export function completePlanningText(text:string,maxChars=3600):string{
   '\n\n[Resposta abreviada. Peça uma análise mais específica para obter os detalhes.]';
 }
 
-export async function readPlanningSource(path:string){
+export async function readPlanningSource(path:string,objective=''){
  if(!allowedPlanningPath(path))throw new Error('DEVOPS_PATH_NOT_ALLOWED');
  const token=await githubReadToken();
  const root='https://api.github.com/repos/'+DEVOPS_REPO;
@@ -161,7 +162,8 @@ export async function readPlanningSource(path:string){
    throw new Error('DEVOPS_INVALID_SOURCE');
   const data=Buffer.from(f.content.replace(/\s+/g,''),'base64').toString('utf-8');
   if(data.length>22_000)throw new Error('DEVOPS_SOURCE_TOO_LARGE');
-  const evidence=buildPlanningEvidence(data);
+  // V2: seleção pelo objetivo, sem enviar arquivos completos ou chamar a IA mais vezes.
+  const evidence=selectLabEvidence(safeSourceExcerpt(data,data.length+1000),objective);
   return {path,refSha:b.commit.sha,blobSha:safeDiagnosticLine(f.sha,40),...evidence};
  }finally{clearTimeout(timeout);}
 }
