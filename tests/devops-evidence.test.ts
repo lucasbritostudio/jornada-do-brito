@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {
  buildPlanningEvidence,splitPlanningEvidence,proposalReferencesEvidence,
- completePlanningText
+ completePlanningText,groundedPlanningFallback
 } from '../lib/devops-planning';
 
 test('trecho curto mantém todas as linhas e a numeração',()=>{
@@ -55,4 +55,39 @@ test('resposta grande avisa quando foi abreviada, sem encerrar sem aviso',()=>{
  const result=completePlanningText('Parte 1.\nParte 2.\n'+'x'.repeat(2000),180);
  assert.ok(result.includes('Resposta abreviada'));
  assert.ok(!result.endsWith('xxx'));
+});
+
+test('falha da IA exibe prova local sem inventar defeitos',()=>{
+ const lines=[
+  "const [asking,setAsking]=useState(false);",
+  "async function ask(e:React.FormEvent){",
+  " setAsking(true);",
+  " try{await fetch('/api/desenvolvimento/chat')}",
+  " finally{setAsking(false)}",
+  "}",
+  "<button disabled={asking}>{asking?'Analisando…':'Perguntar à IA'}</button>"
+ ].join('\n');
+ const e=buildPlanningEvidence(lines,2400);
+ const result=groundedPlanningFallback(e.excerpt,
+  'Verifique se a função ask está completa e o indicador de carregamento aparece.');
+ assert.match(result,/L2: async function ask/);
+ assert.match(result,/\bL\d+:/);
+ assert.match(result,/não comprovam falhas/);
+ assert.ok(!/erro de compilação|função incompleta/i.test(result));
+});
+
+test('fallback não inventa linhas quando pergunta não aparece no código',()=>{
+ const e=buildPlanningEvidence("export default function Hero(){return <h1>Teste</h1>}",1000);
+ const answer=groundedPlanningFallback(e.excerpt,'Verifique o funcionamento do web socket na API');
+ assert.match(answer,/Nenhuma linha relacionada/);
+ assert.doesNotMatch(answer,/L\d+:/);
+});
+
+test('fallback não recupera dados omitidos nem revela segredos',()=>{
+ const code=["const token = 'segredo-importante';",
+  ...Array.from({length:100},(_,i)=>'let elemento'+i+' = '+i+';')].join('\n');
+ const e=buildPlanningEvidence(code,900);
+ const reply=groundedPlanningFallback(e.excerpt,'Analise token e segredo de pagamento');
+ assert.ok(!reply.includes('segredo-importante'));
+ assert.ok(!/L100:/.test(reply)||e.visibleLines.includes(100));
 });

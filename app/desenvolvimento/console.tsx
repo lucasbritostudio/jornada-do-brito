@@ -37,6 +37,8 @@ export default function DevelopmentConsole(){
  const [planningSha,setPlanningSha]=useState('');
  const [planningPartial,setPlanningPartial]=useState(false);
  const [planningReferences,setPlanningReferences]=useState(false);
+ const [planningEvidenceLevel,setPlanningEvidenceLevel]=useState<'checked_quotes'|'source_only'|null>(null);
+ const [planningEvidenceCount,setPlanningEvidenceCount]=useState(0);
  const [copyStatus,setCopyStatus]=useState<'idle'|'copied'|'error'>('idle');
  async function copyAnswer(){
   if(!answer)return;
@@ -82,6 +84,7 @@ export default function DevelopmentConsole(){
  async function planChange(e:React.FormEvent){
   e.preventDefault();if(planningBusy||planningGoal.trim().length<10)return;
   setPlanningBusy(true);setPlanningResult('');setPlanningSha('');setCopyStatus('idle');setError('');
+  setPlanningEvidenceLevel(null);setPlanningEvidenceCount(0);
   try{
    const res=await fetch('/api/desenvolvimento/plan',{
     method:'POST',headers:{'Content-Type':'application/json'},
@@ -93,6 +96,8 @@ export default function DevelopmentConsole(){
    setPlanningSha(json.baseSha);
    setPlanningPartial(Boolean(json.sourceTruncated));
    setPlanningReferences(Boolean(json.evidenceSupported));
+   setPlanningEvidenceLevel(json.evidenceLevel==='checked_quotes'?'checked_quotes':'source_only');
+   setPlanningEvidenceCount(Number.isInteger(json.evidenceCount)?json.evidenceCount:0);
   }catch(e){setError(e instanceof Error?e.message:'Falha ao preparar o plano.');}
   finally{setPlanningBusy(false);}
  }
@@ -155,13 +160,13 @@ export default function DevelopmentConsole(){
    </form>
    {planningResult&&<div className="dc-proposal" role="status">
     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap'}}>
-     <strong>Plano de alteração · aguardando executor</strong>
+     <strong>Laboratório de código · análise somente leitura</strong>
      <button type="button" onClick={copyPlan} aria-label="Copiar plano completo para compartilhar" title="Copiar resposta completa para enviar ao ChatGPT" style={{display:'inline-flex',alignItems:'center',gap:8,padding:'10px 14px',borderRadius:10,cursor:'pointer',border:'1px solid #badd9a',background:'#dff6a5',color:'#162a20',fontWeight:700}}>
       <span aria-hidden="true">{copyStatus==='copied'?'✓':'⧉'}</span>{copyStatus==='copied'?'Copiado!':'Copiar plano'}
      </button>
     </div>
     <small>Versão do código: {planningSha.slice(0,12)} · {planningPartial?'Fonte parcial, com trechos omitidos':'Fonte examinada por inteiro'}</small>
-     <small>{planningReferences?'A IA citou linhas presentes no código; as conclusões ainda precisam de revisão.':'A IA não apresentou referências válidas: o resultado não confirma erros.'}</small>
+     <small>{planningEvidenceLevel==='checked_quotes'?`Laboratório 2.0 · ${planningEvidenceCount} citação(ões) conferida(s) literalmente; interpretação ainda precisa de revisão.`:planningEvidenceLevel==='source_only'?'Laboratório 2.0 · mostrando linhas reais; análise da IA não foi confirmada.':planningReferences?'A IA citou linhas presentes no código; conclusões em revisão.':'Sem diagnóstico confirmado.'}</small>
     {copyStatus==='error'&&<small role="alert">Não foi possível copiar automaticamente. Selecione o texto abaixo e copie manualmente.</small>}
     <p>{planningResult}</p>
    </div>}
