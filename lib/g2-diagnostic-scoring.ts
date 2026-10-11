@@ -61,6 +61,14 @@ export function gradeG2DiagnosticAnswers(
  for(const task of challenges){
   const answer=byId.get(task.id);
   if(!answer)throw new Error('G2_DIAG_MISSING_ANSWER');
+  if(!['static_candidate','not_established'].includes(answer.claimedRoute)||
+   typeof answer.claimedRuntimeCauseConfirmed!=='boolean'||
+   typeof answer.proposedTest!=='string'||answer.proposedTest.length<14||
+   answer.proposedTest.length>450||
+   (answer.citedRoute!==null&&
+    (!answer.citedRoute||typeof answer.citedRoute.path!=='string'||
+     !Number.isSafeInteger(answer.citedRoute.line)||answer.citedRoute.line<1)))
+   throw new Error('G2_DIAG_INVALID_ANSWER');
   const analysis=analyzeG2CausalChain(task.sources,task.entryPath,task.entryFunction,'http_500');
   const expectedEdge=analysis.structuralSteps.filter(s=>
    s.relation==='http_route_candidate'&&s.to.startsWith(task.expectedRoutePath+'#'));
