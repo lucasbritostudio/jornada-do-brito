@@ -226,3 +226,48 @@ test('citações falsas, contradições e fatos corretos têm estados distintos'
  const wrong={...ok,findings:[{...ok.findings[0],line:999}]};
  assert.equal(assessLabModelResponse(JSON.stringify(wrong),e,facts,undefined,path).code,'invalid_citation');
 });
+
+
+test('G1 teste autenticado: negar alteração DESNECESSÁRIA não é contradição',()=>{
+ const path='app/desenvolvimento/console.tsx';
+ const source=readFileSync(path,'utf8');
+ const masked=safeSourceExcerpt(source,source.length+1000);
+ const evidence=selectLabEvidence(masked,'Verifique ask, refresh e copyAnswer; r.ok finally useCallback catch');
+ const facts=verifiedCodeFacts(masked,path,'Verifique ask, refresh e copyAnswer; r.ok finally useCallback catch');
+ assert.equal(facts.length,4);
+ for(const correct of [
+  'Não precisa adicionar verificação de r.ok, pois já existe.',
+  'O refresh não precisa ser recriado; ele já usa useCallback.',
+  'Não é necessário definir refresh com useCallback, porque já utiliza esse padrão.',
+  'O catch de copyAnswer não garante compatibilidade com todo navegador.',
+  'ask já verifica status da resposta, mas isso não garante ausência de outras falhas.',
+  'Não encontramos evidência de bug nessa amostra; recomenda-se teste em navegador.',
+  'Nenhuma alteração justificada; manter comportamento atual.'
+ ]){
+  assert.equal(contradictsVerifiedFacts(correct,facts),false,correct);
+ }
+ for(const falseClaim of [
+  'ask envia fetch sem validar status da resposta',
+  'A função ask não verifica status da resposta',
+  'É preciso adicionar verificação de r.ok para tratar erro',
+  'refresh não foi definido no código',
+  'Definir refresh com useCallback',
+  'copyAnswer não tem tratamento de erro',
+  'r.ok já existe, mas ask não verifica status da resposta'
+ ]){
+  assert.equal(contradictsVerifiedFacts(falseClaim,facts),true,falseClaim);
+ }
+ const line=evidence.visibleLines.find(n=>evidence.lines[n].includes('if(!r.ok)throw'));
+ assert.ok(line);
+ const item={findings:[{
+  file:path,line,quote:'if(!r.ok)throw new Error',
+  interpretation:'A função ask verifica r.ok; o que não demonstra que toda falha de rede seja tratada.'
+ }],uncertain:['Ainda é necessário confirmar comportamento no navegador.'],risks:[],
+ suggestion:'Não precisa adicionar verificação de r.ok, pois já existe.',
+ test:'Simular HTTP 500 e erro de rede sem mudar produção.'};
+ const checked=assessLabModelResponse(JSON.stringify(item),evidence,facts,undefined,path);
+ assert.equal(checked.code,'approved');
+ const falseItem={...item,suggestion:'Adicionar verificação de r.ok para tratar erro.'};
+ assert.equal(assessLabModelResponse(JSON.stringify(falseItem),evidence,facts,undefined,path).code,
+  'contradiction');
+});
