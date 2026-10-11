@@ -159,7 +159,8 @@ test('fronteira HTTP dinâmica não é inventada, nem vazamento de tokens na URL
   ' await fetch(nextUrl);',
   '}'
  ].join('\n')}]);
- assert.equal(g.gaps.filter(x=>x.reason==='http_route_unexamined').length,1);
+ assert.equal(g.gaps.filter(x=>x.reason==='http_route_unexamined').length,2);
+ assert.ok(g.gaps.filter(x=>x.reason==='http_route_unexamined').every(x=>x.symbol==='/api/works'));
  assert.equal(g.gaps.find(x=>x.reason==='http_route_unexamined')?.symbol,'/api/works');
  assert.ok(!JSON.stringify(g).includes('not-for-logs'));
 });
