@@ -2,7 +2,7 @@ import {NextResponse} from 'next/server';
 import {requireAuthenticated} from '@/lib/auth';
 import {generateWithFreeLlm} from '@/lib/llm';
 import {safeSystemPolicy,sanitizeForLlm} from '@/lib/ai-policy';
-import {allowedPlanningPath,readPlanningSource,validPlanningObjective,splitPlanningEvidence,proposalReferencesEvidence,completePlanningText} from '@/lib/devops-planning';
+import {allowedPlanningPath,readPlanningSource,validPlanningObjective,splitPlanningEvidence,proposalReferencesEvidence,completePlanningText,groundedPlanningFallback} from '@/lib/devops-planning';
 import {DEVOPS_REPO} from '@/lib/devops-policy';
 
 export const runtime='nodejs';
@@ -48,7 +48,7 @@ export async function POST(req:Request){
    const evidenceSupported=proposalReferencesEvidence(result.text,source.visibleLines);
    const safeResult=evidenceSupported
     ?completePlanningText(result.text)
-    :'Não há diagnóstico confirmado com referências válidas às linhas recebidas. Para evitar problemas inventados, este plano foi retido. Descreva uma parte menor da interface e tente novamente; nenhuma mudança foi executada.';
+    :groundedPlanningFallback(source.excerpt,objective);
    return NextResponse.json({
     ok:true,mode:'proposal_only',executed:false,repository:DEVOPS_REPO,
     file,baseSha:source.refSha,sourceTruncated:source.truncated,sourceTotalLines:source.totalLines,
