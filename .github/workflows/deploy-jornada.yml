@@ -1,0 +1,81 @@
+name: Jornada — publicação aprovada
+
+# Sem preview: só publica a branch principal ou por acionamento manual.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "lib/**"
+      - "public/**"
+      - "package.json"
+      - "next.config.ts"
+      - "tsconfig.json"
+      - ".github/workflows/deploy-jornada.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jornada-production
+  cancel-in-progress: false
+
+jobs:
+  testar-e-publicar:
+    name: Testar e publicar apenas a Jornada
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CI: "true"
+      NEXT_TELEMETRY_DISABLED: "1"
+      # Identificadores públicos do projeto já existente; não criar outro.
+      VERCEL_ORG_ID: team_ZEmFS6erUu5qbXgYyze8PWdm
+      VERCEL_PROJECT_ID: prj_nZMJzmOo0jsL9tFqfpT6lqdLm3c6
+    steps:
+      - name: Obter versão aprovada
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Preparar Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Instalar dependências
+        run: npm install --ignore-scripts --no-audit --no-fund
+
+      - name: Testes de regressão
+        run: npm test
+
+      - name: Conferir TypeScript
+        run: npx tsc --noEmit
+
+      - name: Verificar autorização da Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        shell: bash
+        run: |
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "::error::Falta configurar o segredo VERCEL_TOKEN no GitHub. Não foi publicado."
+            exit 1
+          fi
+
+      - name: Instalar ferramenta Vercel
+        run: npm install --global vercel@63 --no-audit --no-fund
+
+      - name: Obter configurações do projeto existente
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel pull --yes --environment=production --scope pizzaria-sao-francisco-contingencia --token="$VERCEL_TOKEN"
+
+      - name: Compilar versão de produção
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel build --prod --scope pizzaria-sao-francisco-contingencia --token="$VERCEL_TOKEN"
+
+      - name: Publicar versão pronta no projeto existente
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel deploy --prebuilt --prod --scope pizzaria-sao-francisco-contingencia --token="$VERCEL_TOKEN"
