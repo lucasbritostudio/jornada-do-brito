@@ -12,6 +12,7 @@ on:
       - "next.config.ts"
       - "tsconfig.json"
       - ".github/workflows/deploy-jornada.yml"
+      - "scripts/deploy-vercel-rest.mjs"
   workflow_dispatch:
 
 permissions:
@@ -51,6 +52,9 @@ jobs:
 
       - name: Conferir TypeScript
         run: npx tsc --noEmit
+
+      - name: Conferir script de publicação
+        run: node --check scripts/deploy-vercel-rest.mjs
 
       - name: Verificar autorização da Vercel
         env:
