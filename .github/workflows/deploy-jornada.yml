@@ -62,20 +62,7 @@ jobs:
             exit 1
           fi
 
-      - name: Instalar ferramenta Vercel
-        run: npm install --global vercel@63 --no-audit --no-fund
-
-      - name: Obter configurações do projeto existente
+      - name: Publicar por API restrita ao projeto existente
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: vercel pull --yes --environment=production --scope pizzaria-sao-francisco-contingencia --token="$VERCEL_TOKEN"
-
-      - name: Compilar versão de produção
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: vercel build --prod --scope pizzaria-sao-francisco-contingencia --token="$VERCEL_TOKEN"
-
-      - name: Publicar versão pronta no projeto existente
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: vercel deploy --prebuilt --prod --scope pizzaria-sao-francisco-contingencia --token="$VERCEL_TOKEN"
+        run: node scripts/deploy-vercel-rest.mjs
