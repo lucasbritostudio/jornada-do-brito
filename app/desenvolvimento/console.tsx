@@ -117,8 +117,8 @@ export default function DevelopmentConsole(){
    <button onClick={refresh} disabled={busy} className="dc-refresh">{busy?'Consultando…':'Atualizar diagnóstico'}</button>
   </section>
   <section className="dc-chat">
-   <div><span className="dc-label">ASSISTENTE DE ENGENHARIA</span>
-    <h2>Me conte o problema.</h2>
+   <div><span className="dc-label">LUKBRIX / DIAGNÓSTICO DE ENGENHARIA</span>
+    <h2>Investigue o problema.</h2>
     <p>Aqui eu consulto resultados dos testes e publicações, não o código-fonte. Para analisar código real, use o Laboratório logo abaixo.</p>
    </div>
    <form onSubmit={ask} className="dc-chat-form">
@@ -140,9 +140,9 @@ export default function DevelopmentConsole(){
    <small>A IA não publica nem altera código nesta etapa. Logs e informações sensíveis não são exibidos na conversa.</small>
   </section>
   <section className="dc-plan">
-   <span className="dc-label">FASE 2 / LABORATÓRIO DE CÓDIGO · V2.1</span>
-   <h2>Planejar uma melhoria.</h2>
-   <p>Peça uma mudança e eu consulto o arquivo real no GitHub para montar um plano. A edição e a publicação ainda exigem o executor e permissões adicionais.</p>
+   <span className="dc-label">LUKBRIX / LABORATÓRIO DE PESQUISA · G1</span>
+   <h2>Investigar e testar uma hipótese.</h2>
+   <p>O LUKBRIX investiga o código real, confere evidências e formula experimentos mensuráveis para melhorar o próprio laboratório. A geração G1 só propõe pesquisas: não edita, treina modelos ou publica automaticamente.</p>
    <form onSubmit={planChange} className="dc-plan-form">
     <label htmlFor="dc-plan-file">Qual tela vamos melhorar?</label>
     <select id="dc-plan-file" value={planningFile} onChange={e=>{setPlanningFile(e.target.value);setPlanningResult('');setCopyStatus('idle');}}>
@@ -169,7 +169,7 @@ export default function DevelopmentConsole(){
     </div>
     <small>Versão do código: {planningSha.slice(0,12)} · {planningPartial?'Fonte parcial, com trechos omitidos':'Fonte examinada por inteiro'}</small>
      {planningFiles.length>0&&<small>Arquivos consultados ({planningFiles.length}): {planningFiles.join(' · ')}</small>}
-     <small>{planningEvidenceLevel==='checked_quotes'?`Laboratório 2.1 · ${planningEvidenceCount} citação(ões) conferida(s) literalmente; interpretação ainda precisa de revisão.`:planningEvidenceLevel==='source_only'?'Laboratório 2.1 · mostrando linhas reais; análise da IA não foi confirmada.':planningReferences?'A IA citou linhas presentes no código; conclusões em revisão.':'Sem diagnóstico confirmado.'}</small>
+     <small>{planningEvidenceLevel==='checked_quotes'?`Laboratório 2.2 · ${planningEvidenceCount} citação(ões) conferida(s) literalmente; interpretação ainda precisa de revisão.`:planningEvidenceLevel==='source_only'?'Laboratório 2.2 · mostrando linhas reais; análise da IA não foi confirmada.':planningReferences?'A IA citou linhas presentes no código; conclusões em revisão.':'Sem diagnóstico confirmado.'}</small>
     {copyStatus==='error'&&<small role="alert">Não foi possível copiar automaticamente. Selecione o texto abaixo e copie manualmente.</small>}
     <p>{planningResult}</p>
    </div>}

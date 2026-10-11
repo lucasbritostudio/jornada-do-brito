@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {safeSourceExcerpt,relatedPlanningPath} from '../lib/devops-planning';
 import {verifiedCodeFacts,contradictsVerifiedFacts,type VerifiedFact} from '../lib/devops-claims';
 import {
- selectLabEvidence,evidencePartsV2,reviewLabResponse,localLabReview
+ selectLabEvidence,evidencePartsV2,reviewLabResponse,assessLabModelResponse,localLabReview
 } from '../lib/devops-lab-v2';
 
 test('V2 prioriza função ask e estado de carregamento no código REAL da Central',()=>{
@@ -186,4 +186,43 @@ test('relacionamento de arquivos limitado a UI/CSS autorizados',()=>{
   'app/producao/production.css');
  assert.equal(relatedPlanningPath('lib/auth.ts','melhore o visual'),null);
  assert.equal(relatedPlanningPath('app/globals.css','melhore o visual'),null);
+});
+
+test('teste real 2.1: se fatos positivos existem, fallback não mistura linhas irrelevantes',()=>{
+ const source=readFileSync('app/desenvolvimento/console.tsx','utf8');
+ const masked=safeSourceExcerpt(source,source.length+1000);
+ const e=selectLabEvidence(masked,'Verifique ask r.ok e refresh useCallback');
+ const facts=verifiedCodeFacts(masked,'app/desenvolvimento/console.tsx',
+  'Verifique ask r.ok e refresh useCallback');
+ const output=localLabReview(e,'Verifique ask r.ok e refresh useCallback',facts);
+ assert.equal(output.evidenceSupported,false);
+ assert.match(output.text,/Os fatos positivos já conferidos estão acima/);
+ assert.match(output.text,/simular resposta HTTP 500/);
+ assert.doesNotMatch(output.text,/^L\d+: .*copyAnswer/m);
+});
+
+test('resposta JSON incorreta tem diagnóstico de formato, sem segunda chamada',()=>{
+ const evidence=selectLabEvidence('const ready = true;','ready',1000);
+ assert.equal(assessLabModelResponse('O código está correto',evidence).code,'invalid_format');
+ assert.equal(assessLabModelResponse(
+  JSON.stringify({findings:[],uncertain:['Não posso concluir'],suggestion:'',test:''}),evidence
+ ).code,'no_findings');
+});
+
+test('citações falsas, contradições e fatos corretos têm estados distintos',()=>{
+ const source=readFileSync('app/desenvolvimento/console.tsx','utf8');
+ const masked=safeSourceExcerpt(source,source.length+1000),path='app/desenvolvimento/console.tsx';
+ const e=selectLabEvidence(masked,'Verifique se ask trata resposta com r.ok',6300);
+ const facts=verifiedCodeFacts(masked,path,'Verifique se ask trata resposta com r.ok');
+ const line=e.visibleLines.find(n=>e.lines[n].includes('if(!r.ok)throw'));
+ assert.ok(line);
+ const ok={findings:[{file:path,line,quote:'if(!r.ok)throw new Error',interpretation:'Existe uma checagem r.ok após fetch.'}],
+  uncertain:[],risks:[],suggestion:'Revisar mensagens de erro.',test:'Simular resposta 500.'};
+ const checked=assessLabModelResponse(JSON.stringify(ok),e,facts,undefined,path);
+ assert.equal(checked.code,'approved');
+ assert.equal(checked.review?.evidenceSupported,true);
+ const falseClaim={...ok,findings:[{...ok.findings[0],interpretation:'ask não verifica status da resposta'}]};
+ assert.equal(assessLabModelResponse(JSON.stringify(falseClaim),e,facts,undefined,path).code,'contradiction');
+ const wrong={...ok,findings:[{...ok.findings[0],line:999}]};
+ assert.equal(assessLabModelResponse(JSON.stringify(wrong),e,facts,undefined,path).code,'invalid_citation');
 });
