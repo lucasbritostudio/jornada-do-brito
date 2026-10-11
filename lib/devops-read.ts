@@ -2,6 +2,7 @@ import {
  DEVOPS_REPO, DEVOPS_PROJECT_ID, DEVOPS_TEAM_ID,
  safeDiagnosticLine,
 } from './devops-policy';
+import {githubAppRead,githubAppConfigPresent} from './devops-github-app';
 
 /** Read-only scoped connector; never accept arbitrary URL or project ID. */
 const API_GITHUB='https://api.github.com';
@@ -32,15 +33,17 @@ async function fetchJson(url: string, token: string) {
 
 async function githubStatus() {
   const token = process.env.JORNADA_DEV_GITHUB_READ_TOKEN;
-  if (!token) return {
+  const useApp=githubAppConfigPresent();
+  if (!useApp && !token) return {
     connected:false,status:'not_connected',
     message:'A Jornada ainda não tem autorização própria de leitura no GitHub.',
     branch:'main', runs:[] as Array<{name:string;state:string;result:string|null;sha:string;url:string}>
   };
   try {
+    const getRepo=(path:string)=>useApp?githubAppRead(path):fetchJson(API_GITHUB+path,token!);
     const [repo, workflows] = await Promise.all([
-      fetchJson(API_GITHUB+'/repos/'+DEVOPS_REPO,token),
-      fetchJson(API_GITHUB+'/repos/'+DEVOPS_REPO+'/actions/runs?per_page=8',token)
+      getRepo('/repos/'+DEVOPS_REPO),
+      getRepo('/repos/'+DEVOPS_REPO+'/actions/runs?per_page=8')
     ]);
     const runs = Array.isArray(workflows.workflow_runs)?workflows.workflow_runs.slice(0,8).map((run:any)=>({
       name:safeDiagnosticLine(run.name,90),
