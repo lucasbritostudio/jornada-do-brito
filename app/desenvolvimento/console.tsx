@@ -34,6 +34,18 @@ export default function DevelopmentConsole(){
  const [planningBusy,setPlanningBusy]=useState(false);
  const [planningResult,setPlanningResult]=useState('');
  const [planningSha,setPlanningSha]=useState('');
+ const [copyStatus,setCopyStatus]=useState<'idle'|'copied'|'error'>('idle');
+ async function copyPlan(){
+  if(!planningResult)return;
+  const content=`Plano do laboratório da Jornada do Brito\nArquivo: ${planningFile}\nCommit base: ${planningSha||'não informado'}\n\n${planningResult}`;
+  try{
+   await navigator.clipboard.writeText(content);
+   setCopyStatus('copied');
+  }catch{
+   setCopyStatus('error');
+  }
+ }
+
  const refresh=useCallback(async()=>{
   setBusy(true);setError('');
   try{
@@ -61,7 +73,7 @@ export default function DevelopmentConsole(){
  }
  async function planChange(e:React.FormEvent){
   e.preventDefault();if(planningBusy||planningGoal.trim().length<10)return;
-  setPlanningBusy(true);setPlanningResult('');setPlanningSha('');setError('');
+  setPlanningBusy(true);setPlanningResult('');setPlanningSha('');setCopyStatus('idle');setError('');
   try{
    const res=await fetch('/api/desenvolvimento/plan',{
     method:'POST',headers:{'Content-Type':'application/json'},
@@ -126,8 +138,14 @@ export default function DevelopmentConsole(){
     </button>
    </form>
    {planningResult&&<div className="dc-proposal" role="status">
-    <strong>Plano de alteração · aguardando executor</strong>
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap'}}>
+     <strong>Plano de alteração · aguardando executor</strong>
+     <button type="button" onClick={copyPlan} aria-label="Copiar plano completo para compartilhar" title="Copiar resposta completa para enviar ao ChatGPT" style={{display:'inline-flex',alignItems:'center',gap:8,padding:'10px 14px',borderRadius:10,cursor:'pointer',border:'1px solid #badd9a',background:'#dff6a5',color:'#162a20',fontWeight:700}}>
+      <span aria-hidden="true">{copyStatus==='copied'?'✓':'⧉'}</span>{copyStatus==='copied'?'Copiado!':'Copiar plano'}
+     </button>
+    </div>
     <small>Versão do código: {planningSha.slice(0,12)}</small>
+    {copyStatus==='error'&&<small role="alert">Não foi possível copiar automaticamente. Selecione o texto abaixo e copie manualmente.</small>}
     <p>{planningResult}</p>
    </div>}
    <small>Acesso de leitura. Nenhum arquivo é modificado por este formulário.</small>
