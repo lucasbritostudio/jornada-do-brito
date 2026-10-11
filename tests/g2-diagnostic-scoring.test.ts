@@ -81,3 +81,13 @@ test('respostas faltantes, IDs repetidos e listas pequenas não geram nota fict�
  assert.throws(()=>gradeG2DiagnosticAnswers(G2_ENGINEERING_V1.slice(0,2),
   good.slice(0,2)),/INVALID_BATCH/);
 });
+
+test('rubrica recusa valores inválidos mesmo quando passam por tipagem fraudulenta',()=>{
+ const valid=staticCandidateAnswers();
+ const bad=valid.map((answer,i)=>i===0?
+  {...answer,claimedRuntimeCauseConfirmed:'false' as unknown as boolean}:answer);
+ assert.throws(()=>gradeG2DiagnosticAnswers(G2_ENGINEERING_V1,bad),/INVALID_ANSWER/);
+ const badTest=valid.map((answer,i)=>i===0?
+  {...answer,proposedTest:''}:answer);
+ assert.throws(()=>gradeG2DiagnosticAnswers(G2_ENGINEERING_V1,badTest),/INVALID_ANSWER/);
+});
