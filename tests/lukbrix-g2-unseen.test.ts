@@ -51,6 +51,12 @@ const novel:readonly LukbrixCase[]=[
 test('G2 no desafio externo revela as limitações reais do verificador',()=>{
  const r=auditG2OnUnseen(LUKBRIX_G2_SAMPLE_TRAIN,LUKBRIX_G2_SAMPLE_HOLDOUT,novel);
  assert.equal(r.sampleCount,16);
+ // Números da amostra rotulada independente, NÃO da capacidade do modelo Groq.
+ assert.equal(r.baselineCorrect,10);
+ assert.equal(r.candidateCorrect,10);
+ assert.equal(r.baselineFalseRejectionRate,0.25);
+ assert.equal(r.candidateFalseRejectionRate,0.25);
+ assert.equal(r.candidateTrueAcceptanceRate,1);
  assert.ok(r.candidateCorrect!==null);
  assert.ok(r.candidateCorrect! <= 16);
  assert.ok(r.candidateCorrect! < 16,'um filtro de citações não prova a interpretação');
