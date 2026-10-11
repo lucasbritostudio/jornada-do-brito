@@ -6,7 +6,6 @@
  * nenhum dado real, nenhum segredo ou resposta bruta impresso/persistido,
  * nenhum retry, tempo máximo de 15 segundos por requisição.
  */
-import {getGroqApiKey} from '../lib/secrets';
 import {G2_LIVE_BLIND_V1} from '../tests/fixtures/g2-live-blind-v1';
 import {buildG2LivePrompt,gradeG2LiveAnswers} from '../lib/g2-live-benchmark';
 import {verifyJornadaLink,EXPECTED_PROJECT_ID,EXPECTED_TEAM_ID} from './verify-jornada-link.mjs';
@@ -23,19 +22,18 @@ async function main(){
   throw new Error('G2_LIVE_PROJECT_ENV_MISMATCH');
  if(G2_LIVE_BLIND_V1.length!==MAX_CALLS)
   throw new Error('G2_LIVE_CASE_COUNT_MISMATCH');
- const model=process.env.GROQ_MODEL||'openai/gpt-oss-20b';
- let apiKey:string|null=null;
- try{
-  // Pode consultar o COFRE PRIVADO Jornada em modo somente leitura,
-  // se a chave não está em .env.local. Nunca transfere para GitHub Actions.
-  apiKey=await getGroqApiKey();
- }catch{
-  report({status:'BLOCKED_KEY_UNAVAILABLE',reason:'ISOLATED_AUTHENTICATION_NOT_READY',
+ const model=process.env.G2_TEST_GROQ_MODEL||'openai/gpt-oss-20b';
+ // O piloto NUNCA consulta chaves, cofres ou quotas produtivas da Jornada.
+ // Somente credencial dedicada ao ambiente de testes, fornecida localmente.
+ if(process.env.G2_TEST_SANDBOX_ACK!=='isolated'){
+  report({status:'BLOCKED_TEST_ACCOUNT_REQUIRED',
+   reason:'ISOLATED_FREE_TEST_ACCOUNT_NOT_CONFIRMED',
    attemptedModelCalls:0,productionModified:false});
   process.exitCode=3;return;
  }
+ let apiKey:string|null=process.env.G2_TEST_GROQ_API_KEY||null;
  if(!apiKey){
-  report({status:'BLOCKED_KEY_UNAVAILABLE',reason:'GROQ_KEY_NOT_CONFIGURED',
+  report({status:'BLOCKED_TEST_KEY_UNAVAILABLE',reason:'DEDICATED_TEST_KEY_NOT_CONFIGURED',
    attemptedModelCalls:0,productionModified:false});
   process.exitCode=3;return;
  }
