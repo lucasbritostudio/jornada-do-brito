@@ -120,11 +120,12 @@ export function runLukbrixG2Experiment(
    improved:trainVerdict.improved||holdVerdict.improved,
   };
  });
- // Desempate determinístico: taxa menor de erros no holdout e menos regras.
+ // Seleção pela fase TREINO; o holdout serve somente como veto, não como
+ // função objetivo (evita escolher alterações que decoraram o teste oculto).
  const eligible=candidates.filter(c=>c.trainPass&&c.holdoutPass&&c.improved)
   .sort((a,b)=>{
-   const aScore=a.holdout.falseRejected+a.holdout.trueAccepted;
-   const bScore=b.holdout.falseRejected+b.holdout.trueAccepted;
+   const aScore=a.train.falseRejected+a.train.trueAccepted;
+   const bScore=b.train.falseRejected+b.train.trueAccepted;
    if(aScore!==bScore)return bScore-aScore;
    return Number(b.policy.rejectAbsence)-Number(a.policy.rejectAbsence);
   });
