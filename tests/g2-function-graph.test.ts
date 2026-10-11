@@ -77,6 +77,9 @@ test('grafo real encontra funções locais sem inventar importações para APIs 
  assert.ok(g.symbols.some(s=>s.name==='refresh'&&s.parent!==null));
  assert.ok(g.symbols.some(s=>s.name==='copyAnswer'&&s.parent!==null));
  assert.ok(g.gaps.some(x=>x.symbol==='react'&&x.reason==='external_or_unprovided'));
+ assert.ok(g.gaps.some(x=>x.reason==='http_route_unexamined'&&x.symbol==='/api/desenvolvimento/chat'));
+ assert.ok(g.gaps.some(x=>x.reason==='http_route_unexamined'&&x.symbol==='/api/desenvolvimento/plan'));
+ assert.ok(!g.edges.some(x=>x.to.includes('/api/desenvolvimento/chat')));
  assert.ok(!g.edges.some(e=>e.to.startsWith('file:lib/auth')));
 });
 test('funções com mesmo nome aninhadas ficam identificadas pelo escopo e linha',()=>{
@@ -143,4 +146,18 @@ test('ciclo de função não causa laço infinito no rastreador',()=>{
  assert.equal(trace.status,'static_trace_only');
  assert.equal(trace.nodes.length,2);
  assert.ok(trace.edges.length>0&&trace.edges.length<=5);
+});
+
+test('fronteira HTTP dinâmica não é inventada, nem vazamento de tokens na URL',()=>{
+ const path='app/demo/client.tsx';
+ const g=buildG2FunctionGraph([{path,sha,content:[
+  'export async function sync(){',
+  ' await fetch("/api/works?token=not-for-logs");',
+  ' await fetch("/api/works");',
+  ' await fetch(nextUrl);',
+  '}'
+ ].join('\n')}]);
+ assert.equal(g.gaps.filter(x=>x.reason==='http_route_unexamined').length,1);
+ assert.equal(g.gaps.find(x=>x.reason==='http_route_unexamined')?.symbol,'/api/works');
+ assert.ok(!JSON.stringify(g).includes('not-for-logs'));
 });
