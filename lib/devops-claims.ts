@@ -74,7 +74,7 @@ export function contradictsVerifiedFacts(interpretation:string,facts:VerifiedFac
    /\b(?:dispensa|desnecessari[oa])\s+(?:adicionar|criar|implementar|definir|incluir)\b/.test(c);
   if(hasStatus){
    const statusRef=/(?:\bask\b|status|r\.ok|fetch|resposta)/.test(c);
-   const explicitNoCheck=/(?:\b(?:ask|fetch)\b.{0,90}\b(?:nao|sem)\s+(?:faz\s+|possui\s+)?(?:verific|valid|chec|trat).{0,45}(?:status|r\.ok|resposta))|(?:\bsem\s+(?:valid|verific|chec).{0,30}(?:status|r\.ok|resposta))|(?:\b(?:falta|ausencia)\b.{0,50}(?:valid|verific|chec).{0,30}(?:status|r\.ok|resposta))/.test(c);
+   const explicitNoCheck=/(?:\b(?:ask|fetch)\b.{0,90}\b(?:nao|sem)\s+(?:faz\s+|possui\s+)?(?:verific|valid|chec|trat).{0,45}(?:status|r\.ok|resposta))|(?:\bsem\s+(?:valid|verific|chec).{0,30}(?:status|r\.ok|resposta))|(?:\b(?:falta|ausencia)\b.{0,50}(?:valid|verific|chec).{0,30}(?:status|r\.ok|resposta))|(?:\bnao\s+(?:verific|valid|chec).{0,30}(?:status|r\.ok|resposta))/.test(c);
    if(statusRef&&explicitNoCheck&&!unnecessary)return true;
    const addCheck=/(?:adicionar|implementar|incluir|criar|precisa\s+de|deveria\s+(?:ter|fazer))\s+.{0,35}(?:verific|valid|chec).{0,30}(?:r\.ok|status\s*(?:http|da\s*resposta)|resposta\s*do\s*fetch)|(?:adicionar|implementar|incluir|criar)\s+.{0,20}r\.ok/.test(c);
    if(statusRef&&addCheck&&!unnecessary&&!/\bja\s+(?:existe|possui|faz|tem|verifica|valida)\b/.test(c))return true;
