@@ -57,12 +57,12 @@ const askPastCaptureTime=(message:string,stage:Stage)=>stage==='captured'&&
  /\b(ontem|anteontem|semana passada|dias atras|dia \d{1,2}|de manha|de tarde|a noite)\b/i.test(fold(message));
 const groundedNowCapture=(message:string)=>/\b(acabei de|agora|terminei agora|neste instante|nesse instante)\b/i.test(fold(message));
 const STAGE_EVIDENCE:Partial<Record<Stage,RegExp>>={
- captured:/\\b(gravei|gravar|gravacao|captei|captacao|filmei|filmagem)\\b/,
- editing:/\\b(editando|editar|edicao|montando)\\b/,
- review:/\\b(enviei|mandei|entreguei)\\b[\\s\\S]{0,70}\\b(avaliacao|aprovacao|cliente)\\b/,
- changes_requested:/\\b(ajustes|corrigir|correcao|mudancas)\\b/,
- approved:/\\b(aprovou|aprovado|aprovada)\\b/,
- delivered:/\\b(entreguei|entregue|entrega final)\\b/
+ captured:/\b(gravei|gravar|gravacao|captei|captacao|filmei|filmagem)\b/,
+ editing:/\b(editando|editar|edicao|montando)\b/,
+ review:/\b(enviei|mandei|entreguei)\b[\s\S]{0,70}\b(avaliacao|aprovacao|cliente)\b/,
+ changes_requested:/\b(ajustes|corrigir|correcao|mudancas)\b/,
+ approved:/\b(aprovou|aprovado|aprovada)\b/,
+ delivered:/\b(entreguei|entregue|entrega final)\b/
 };
 export function stageAllowedFromStatement(stage:Stage,message:string){
  if(!STAGE_EVIDENCE[stage]?.test(fold(message)))
@@ -105,7 +105,7 @@ export function recordProductionPayment(data:ProductionData,clientName:string,am
   throw new Error('Só registro dinheiro quando você confirma que recebeu de verdade.');
  if(!Number.isSafeInteger(amountCents)||amountCents<=0||amountCents>100_000_000)
   throw new Error('Informe o valor realmente recebido.');
- const match=/r\\$\\s*([0-9]+(?:[.,][0-9]{1,2})?)|\\b([0-9]+(?:[.,][0-9]{1,2})?)\\s*reais\\b/i.exec(message);
+ const match=/r\$\s*([0-9]+(?:[.,][0-9]{1,2})?)|\b([0-9]+(?:[.,][0-9]{1,2})?)\s*reais\b/i.exec(message);
  if(!match)throw new Error('Informe o valor exato recebido, como “Recebi R$ 200 do Garreto”.');
  const numeric=Number((match[1]||match[2]).replace(',','.'));
  if(!Number.isFinite(numeric)||Math.round(numeric*100)!==amountCents)
