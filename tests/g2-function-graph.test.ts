@@ -3,6 +3,7 @@ import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import {buildG2FunctionGraph,traceG2Function,type GraphSource} from '../lib/g2-function-graph';
 import {findG2ImportCycles} from '../lib/g2-import-cycles';
+import {planG2DependencyInvestigation} from '../lib/g2-investigation-plan';
 
 const sha='a'.repeat(40);
 const synthetic:GraphSource[]=[
@@ -176,4 +177,34 @@ test('identifica ciclo de import entre três módulos, sem afirmar erro de execu
  assert.equal(cycles[0].runtimeBugConfirmed,false);
  assert.equal(cycles[0].observation,'possible_static_import_cycle');
  assert.equal(findG2ImportCycles(buildG2FunctionGraph(synthetic)).length,0);
+});
+
+test('investigação multi-arquivo rastreia dependências e propõe validação, não defeitos',()=>{
+ const graph=buildG2FunctionGraph(synthetic);
+ const report=planG2DependencyInvestigation(graph,'app/demo/page.tsx','screen');
+ assert.equal(report.state,'bounded_static_map');
+ assert.equal(report.subject.sha,sha);
+ assert.ok(report.examinedFunctions.some(x=>x.path==='lib/demo/logic.ts'&&x.name==='parse'));
+ assert.ok(report.importEvidence.some(x=>x.to==='file:app/demo/styles.css'));
+ assert.ok(report.callEvidence.some(x=>x.kind==='call'&&x.path==='components/demo/mapper.ts'));
+ assert.equal(report.missingEvidence.length,0);
+ assert.equal(report.changesApplied,false);
+ assert.equal(report.safeToDeploy,false);
+ assert.match(report.nextExperiment.join(' '),/teste de integração/);
+});
+test('investigação real de UI identifica limite no backend e não inventa execução',()=>{
+ const path='app/desenvolvimento/console.tsx';
+ const graph=buildG2FunctionGraph([{path,sha,content:readFileSync(path,'utf8')}]);
+ const report=planG2DependencyInvestigation(graph,path,'ask');
+ assert.equal(report.state,'insufficient_sources');
+ assert.ok(report.missingEvidence.some(x=>x.reason==='http_route_unexamined'&&x.symbol==='/api/desenvolvimento/chat'));
+ assert.ok(report.nextExperiment.some(s=>s.includes('contrato de HTTP')));
+ assert.equal(report.safeToDeploy,false);
+});
+test('função inexistente nas fontes examinadas produz lacuna, não bug',()=>{
+ const g=buildG2FunctionGraph(synthetic);
+ const p=planG2DependencyInvestigation(g,'app/demo/page.tsx','serverRoutesNotProvided');
+ assert.equal(p.state,'ambiguous_entry');
+ assert.equal(p.examinedFunctions.length,0);
+ assert.equal(p.safeToDeploy,false);
 });
