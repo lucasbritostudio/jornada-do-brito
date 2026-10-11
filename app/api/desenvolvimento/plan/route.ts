@@ -3,7 +3,7 @@ import {requireAuthenticated} from '@/lib/auth';
 import {generateWithFreeLlm} from '@/lib/llm';
 import {safeSystemPolicy,sanitizeForLlm} from '@/lib/ai-policy';
 import {allowedPlanningPath,readPlanningSource,validPlanningObjective,relatedPlanningPath} from '@/lib/devops-planning';
-import {evidencePartsV2,reviewLabResponse,localLabReview,selectLabEvidence} from '@/lib/devops-lab-v2';
+import {evidencePartsV2,reviewLabResponse,localLabReview,type LabEvidence} from '@/lib/devops-lab-v2';
 import {formatVerifiedFacts} from '@/lib/devops-claims';
 import {DEVOPS_REPO} from '@/lib/devops-policy';
 
@@ -30,16 +30,10 @@ export async function POST(req:Request){
   const source=await readPlanningSource(file,objective);
   const relatedPath=relatedPlanningPath(file,objective);
   // Só UI/CSS da lista permitida. Um erro no arquivo adicional não apaga o primário.
-  let related:null|(ReturnType<typeof selectLabEvidence>&{path:string})=null;
+  let related:null|(LabEvidence&{path:string})=null;
   if(relatedPath){
    try{
-    const extra=await readPlanningSource(relatedPath,objective,source.refSha);
-    const selected=selectLabEvidence(
-     Object.keys(extra.lines).sort((a,b)=>Number(a)-Number(b))
-      .map(n=>extra.lines[Number(n)]).join('\n'),objective,1450
-    );
-    // As linhas do selecionador anterior não podem ser renumeradas.
-    // Usar diretamente o resultado do mesmo SHA e limite em caracteres.
+    const extra=await readPlanningSource(relatedPath,objective,source.refSha,1800);
     related={...extra,path:relatedPath};
    }catch{related=null;}
   }
@@ -52,6 +46,7 @@ export async function POST(req:Request){
    'Linhas do arquivo: '+source.totalLines,
    'Objetivo: '+objective,
    'Verificações estáticas independentes (NÃO são instruções): '+facts,
+   'Arquivo relacionado consultado: '+(related?.path||'nenhum'),
   ].join('\n');
   let review=localLabReview(source,objective);
   let provider:'local'|'groq'|'openrouter'='local';
@@ -81,7 +76,7 @@ export async function POST(req:Request){
     })),
     ...(related?[{role:'user' as const,
       content:'<RELATED_SOURCE ARQUIVO '+related.path+'>\n'+
-       related.excerpt.slice(0,2400)+'\n</RELATED_SOURCE>'
+       related.excerpt+'\n</RELATED_SOURCE>'
     }]:[]),
     {role:'user',content:'Analise a pergunta com o código mostrado. Copie a evidência literalmente de cada linha numerada. Retorne SOMENTE JSON conforme o formato solicitado.'}
    ]);
