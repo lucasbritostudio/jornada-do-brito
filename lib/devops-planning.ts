@@ -20,7 +20,7 @@ export function validPlanningObjective(input:unknown):input is string{
  return typeof input==='string'&&input.trim().length>=10&&input.trim().length<=650 &&
   !/-----BEGIN [\s\S]*?PRIVATE KEY-----/i.test(input);
 }
-export function safeSourceExcerpt(source:string,max=8500):string{
+export function safeSourceExcerpt(source:string,max=2800):string{
  if(typeof source!=='string')return '';
  const exclude=/\b(?:password|passwd|senha|secret|private_key|token|api[_-]?key)\b\s*[:=]/i;
  return source.split('\n').map(s=>exclude.test(s)?'[LINHA DE CONFIGURAÇÃO OCULTA]':s)
@@ -52,6 +52,6 @@ export async function readPlanningSource(path:string){
   const data=Buffer.from(f.content.replace(/\s+/g,''),'base64').toString('utf-8');
   if(data.length>22_000)throw new Error('DEVOPS_SOURCE_TOO_LARGE');
   return {path,refSha:b.commit.sha,blobSha:safeDiagnosticLine(f.sha,40),
-    excerpt:safeSourceExcerpt(data),truncated:data.length>8500};
+    excerpt:safeSourceExcerpt(data),truncated:data.length>2800};
  }finally{clearTimeout(timeout);}
 }
