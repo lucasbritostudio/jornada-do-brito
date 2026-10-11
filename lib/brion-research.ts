@@ -1,10 +1,10 @@
 /**
- * BRIÔN: núcleo científico de evolução do Laboratório da Jornada.
+ * LUKBRIX: núcleo científico de evolução do Laboratório da Jornada.
  * Formula hipóteses falsificáveis, calcula prioridades e exige benchmark
  * ANTES de recomendar melhoria. NÃO edita código, treina modelos ou publica.
  * Todos os cálculos deste arquivo são locais, puros e sem custo de IA.
  */
-export const BRION_NAME='BRIÔN' as const;
+export const LUKBRIX_NAME='LUKBRIX' as const;
 export type BrionSignal=
  'approved'|'invalid_format'|'no_findings'|'invalid_citation'|'contradiction'|
  'unverified'|'provider_unavailable'|'provider_rate_limited'|'provider_timeout';
@@ -16,7 +16,7 @@ export type BrionResearchInput={
  filesExamined:number;
 };
 export type BrionOpportunity={
- name:typeof BRION_NAME;
+ name:typeof LUKBRIX_NAME;
  generation:'G1 — pesquisa assistida por evidências';
  status:'research_proposal_only';
  hypothesis:string;
@@ -109,7 +109,7 @@ export function createBrionOpportunity(input:BrionResearchInput):BrionOpportunit
  const priorityIndex=Math.max(1,
   Math.round(source.impact*evidenceWeight/(source.cost+1))-contextPenalty);
  return {
-  name:BRION_NAME,generation:'G1 — pesquisa assistida por evidências',
+  name:LUKBRIX_NAME,generation:'G1 — pesquisa assistida por evidências',
   status:'research_proposal_only',
   hypothesis:source.hypothesis,
   experiment:source.experiment,
