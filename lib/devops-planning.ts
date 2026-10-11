@@ -133,7 +133,7 @@ export function completePlanningText(text:string,maxChars=3600):string{
   '\n\n[Resposta abreviada. Peça uma análise mais específica para obter os detalhes.]';
 }
 
-export async function readPlanningSource(path:string,objective='',requestedSha?:string){
+export async function readPlanningSource(path:string,objective='',requestedSha?:string,evidenceBudget=6300){
  if(!allowedPlanningPath(path))throw new Error('DEVOPS_PATH_NOT_ALLOWED');
  const token=await githubReadToken();
  const root='https://api.github.com/repos/'+DEVOPS_REPO;
@@ -168,7 +168,7 @@ export async function readPlanningSource(path:string,objective='',requestedSha?:
   if(data.length>22_000)throw new Error('DEVOPS_SOURCE_TOO_LARGE');
   // V2: seleção pelo objetivo, sem enviar arquivos completos ou chamar a IA mais vezes.
   const masked=safeSourceExcerpt(data,data.length+1000);
-  const evidence=selectLabEvidence(masked,objective);
+  const evidence=selectLabEvidence(masked,objective,evidenceBudget);
   const staticFacts=verifiedCodeFacts(masked,path,objective);
   return {path,refSha,blobSha:safeDiagnosticLine(f.sha,40),staticFacts,...evidence};
  }finally{clearTimeout(timeout);}
