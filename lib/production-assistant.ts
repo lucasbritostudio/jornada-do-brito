@@ -56,7 +56,17 @@ export function locateWork(data:ProductionData,clientName:string,videoTitle?:str
 const askPastCaptureTime=(message:string,stage:Stage)=>stage==='captured'&&
  /\b(ontem|anteontem|semana passada|dias atras|dia \d{1,2}|de manha|de tarde|a noite)\b/i.test(fold(message));
 const groundedNowCapture=(message:string)=>/\b(acabei de|agora|terminei agora|neste instante|nesse instante)\b/i.test(fold(message));
+const STAGE_EVIDENCE:Partial<Record<Stage,RegExp>>={
+ captured:/\\b(gravei|gravar|gravacao|captei|captacao|filmei|filmagem)\\b/,
+ editing:/\\b(editando|editar|edicao|montando)\\b/,
+ review:/\\b(enviei|mandei|entreguei)\\b[\\s\\S]{0,70}\\b(avaliacao|aprovacao|cliente)\\b/,
+ changes_requested:/\\b(ajustes|corrigir|correcao|mudancas)\\b/,
+ approved:/\\b(aprovou|aprovado|aprovada)\\b/,
+ delivered:/\\b(entreguei|entregue|entrega final)\\b/
+};
 export function stageAllowedFromStatement(stage:Stage,message:string){
+ if(!STAGE_EVIDENCE[stage]?.test(fold(message)))
+  throw new Error('Não ficou claro qual etapa realmente aconteceu. Diga a ação em palavras simples.');
  if(stage==='captured' && askPastCaptureTime(message,stage) && !groundedNowCapture(message))
   throw new Error('Qual foi o dia e horário exatos em que terminou a gravação? Assim o prazo de 72h fica correto.');
  // Don't back-date an action based solely on the language model.
@@ -95,6 +105,11 @@ export function recordProductionPayment(data:ProductionData,clientName:string,am
   throw new Error('Só registro dinheiro quando você confirma que recebeu de verdade.');
  if(!Number.isSafeInteger(amountCents)||amountCents<=0||amountCents>100_000_000)
   throw new Error('Informe o valor realmente recebido.');
+ const match=/r\\$\\s*([0-9]+(?:[.,][0-9]{1,2})?)|\\b([0-9]+(?:[.,][0-9]{1,2})?)\\s*reais\\b/i.exec(message);
+ if(!match)throw new Error('Informe o valor exato recebido, como “Recebi R$ 200 do Garreto”.');
+ const numeric=Number((match[1]||match[2]).replace(',','.'));
+ if(!Number.isFinite(numeric)||Math.round(numeric*100)!==amountCents)
+  throw new Error('O valor reconhecido não confere com o que você escreveu. Tente novamente.');
  const work=locateWork(data,clientName,videoTitle);
  if(data.payments.some(p=>p.id===operationId))return {changed:false,message:'Esse recebimento já foi registrado.',workId:work.id};
  const summary=paymentSummary(data,work);
