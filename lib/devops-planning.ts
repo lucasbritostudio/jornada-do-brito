@@ -133,7 +133,7 @@ export function completePlanningText(text:string,maxChars=3600):string{
   '\n\n[Resposta abreviada. Peça uma análise mais específica para obter os detalhes.]';
 }
 
-export async function readPlanningSource(path:string,objective='',requestedSha?:string,evidenceBudget=6300){
+export async function readPlanningSource(path:string,objective='',requestedSha?:string,evidenceBudget=6300,timeoutMs=8500){
  if(!allowedPlanningPath(path))throw new Error('DEVOPS_PATH_NOT_ALLOWED');
  const token=await githubReadToken();
  const root='https://api.github.com/repos/'+DEVOPS_REPO;
@@ -144,7 +144,8 @@ export async function readPlanningSource(path:string,objective='',requestedSha?:
   'User-Agent':'jornada-dev-planner'
  };
  const controller=new AbortController();
- const timeout=setTimeout(()=>controller.abort(),8500);
+ const timeout=setTimeout(()=>controller.abort(),Math.min(8500,Math.max(1000,timeoutMs)));
+
  try{
   let refSha=requestedSha;
   if(!refSha){
