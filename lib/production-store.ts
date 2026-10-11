@@ -31,7 +31,10 @@ export async function changeProduction<T>(mutate:(data:ProductionData)=>T):Promi
   // Callback must make only deterministic local mutations, never external sends.
   for(let attempt=0;attempt<6;attempt++){
     const state=await readProduction();
+    const before=JSON.stringify({works:state.works,payments:state.payments});
     const value=mutate(state);
+    // Retries/double-clicks are idempotent; avoid costly private Blob writes.
+    if(JSON.stringify({works:state.works,payments:state.payments})===before)return value;
     try {await persistProduction(state);return value;}
     catch(error){
       if(!isBlobConflict(error)||attempt===5)throw error;
