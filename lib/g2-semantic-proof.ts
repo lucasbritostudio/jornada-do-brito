@@ -91,7 +91,9 @@ export function checkG2Claim(item:Pick<LukbrixCase,'sourceLine'|'quote'|'claim'>
    'Testar redirecionamento em navegador isolado.');
  const fixed=src.match(/^\s*return\s+[\w$.]+\.toFixed\s*\(\s*(\d{1,2})\s*\)\s*;?$/);
  if(fixed&&/\b(?:format|casas?\s+decimais?)\w*/.test(claim)&&
-    new RegExp('\\b'+fixed[1]+'\\b').test(claim))
+    (new RegExp('\\b'+fixed[1]+'\\b').test(claim)||
+     (fixed[1]==='2'&&/\bduas\s+casas\b/.test(claim))||
+     (fixed[1]==='1'&&/\buma\s+casa\b/.test(claim))))
   return witness('supported','literal_operation',
    'toFixed recebe '+fixed[1]+' casas decimais, sem garantir formatação em toda a aplicação.',
    'Testar valores arredondados e casos-limite.');
