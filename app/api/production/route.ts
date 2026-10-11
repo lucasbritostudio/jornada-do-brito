@@ -23,7 +23,8 @@ function err(e:unknown){
     OVERPAYMENT:'O pagamento excede o saldo contratado.',
     INVALID_INPUT:'Preencha os campos obrigatórios.',
     TOO_MANY:'Limite de registros atingido.',
-    PAYMENT_DUPLICATE:'Pagamento já registrado.'
+    PAYMENT_DUPLICATE:'Pagamento já registrado.',
+    SCHEDULE_REQUIRED:'Informe a data de gravação antes de marcar como agendada.'
   };
   const msg=e instanceof Error?messages[e.message]:null;
   return msg?NextResponse.json({error:msg},{status:400}):
@@ -89,6 +90,7 @@ export async function POST(req:Request){
         if(!work)throw new Error('WORK_NOT_FOUND');
         if(!transitionAllowed(work.stage,next))throw new Error('CANNOT_TRANSITION');
         const at=new Date().toISOString();
+        if(next==='scheduled'&&!work.scheduledAt)throw new Error('SCHEDULE_REQUIRED');
         if(next==='captured'){
           // Real end of filming; no timer before confirmed capture.
           const stamp=body.capturedAt?ensureValidDate(body.capturedAt):at;
@@ -97,7 +99,10 @@ export async function POST(req:Request){
         }
         if(['editing','review','changes_requested','approved','delivered'].includes(next)&&!work.capturedAt)
           throw new Error('CAPTURE_REQUIRED');
-        if(next==='review')work.reviewSentAt=at;
+        if(next==='review'){
+          if(!work.firstReviewSentAt)work.firstReviewSentAt=at;
+          work.reviewSentAt=at;
+        }
         if(next==='approved')work.approvedAt=at;
         if(next==='delivered')work.deliveredAt=at;
         work.stage=next;work.updatedAt=at;work.history.push({stage:next,at});
