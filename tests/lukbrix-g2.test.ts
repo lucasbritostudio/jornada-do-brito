@@ -57,3 +57,13 @@ test('G2 jamais escolhe mudança que reduz aceitação de provas verdadeiras',()
  assert.equal(result.candidates.some(c=>c.trainPass&&c.holdoutPass),true);
  assert.ok(result.candidates.some(c=>c.trainPass===false||c.holdoutPass===false));
 });
+
+test('G2 protege cada caso antes correto mesmo quando acertos totais aumentam',()=>{
+ const r=runLukbrixG2Experiment(LUKBRIX_G2_SAMPLE_TRAIN,LUKBRIX_G2_SAMPLE_HOLDOUT);
+ const unsafe=r.candidates.find(c=>c.policy.rejectAbsence===false);
+ assert.ok(unsafe,'candidato inseguro deveria existir como contraexemplo');
+ // Sem proteção individual, melhorias em casos novos poderiam esconder perdas antigas.
+ assert.equal(unsafe!.trainPass,false);
+ assert.equal(unsafe!.holdoutPass,false);
+ assert.equal(r.selected?.policy.rejectAbsence,true);
+});
