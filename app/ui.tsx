@@ -269,6 +269,10 @@ export default function Dashboard() {
               {label}
             </button>
           ))}
+          <a href="/campanhas" style={{display:'flex',gap:11,alignItems:'center',width:'100%',padding:'11px 12px',borderRadius:12,background:'#202c28',color:'#ddf492',fontWeight:750,fontSize:13}}>
+            <span className="dot-icon" aria-hidden="true" />
+            Resultados das Campanhas
+          </a>
           <button
             onClick={() => setTab('settings')}
             className={tab === 'settings' ? 'active' : ''}
@@ -362,6 +366,7 @@ export default function Dashboard() {
             {label}
           </button>
         ))}
+        <a href="/campanhas" style={{padding:'12px 9px',color:'#ddf492',fontWeight:750,whiteSpace:'nowrap'}}>Campanhas</a>
       </nav>
 
       {quick && (
