@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import {
  addIfUnique, campaignKey, containsCampaignCode,
  emptyCampaignStore, metrics, type CampaignEvent
-} from '../lib/campaigns.ts';
+} from '../lib/campaigns';
 
 function fixture(){
  const s=emptyCampaignStore();
