@@ -86,9 +86,14 @@ async function vercelStatus() {
 
 export async function getDevopsSnapshot() {
  const [github,vercel]=await Promise.all([githubStatus(),vercelStatus()]);
+ const appConfigured=process.env.JORNADA_GITHUB_APP_ID==='5273402' &&
+   process.env.JORNADA_GITHUB_INSTALLATION_ID==='170248864';
+ const pemPresent=Boolean(process.env.JORNADA_GITHUB_APP_PRIVATE_KEY);
+ const githubInstallation={installed:appConfigured,privateKeyConfigured:pemPresent,
+   effectiveAccess:github.connected?'read_only':'not_authenticated'};
  return {
    mode:'read_only' as const, repository:DEVOPS_REPO,projectId:DEVOPS_PROJECT_ID,
-   checkedAt:new Date().toISOString(),github,vercel,
+   checkedAt:new Date().toISOString(),github,vercel,githubInstallation,
    capabilities:{diagnostics:true,edit:false,deploy:false,rollback:false},
    nextStep:'Conectar GitHub App e Vercel de modo separado, com autorização do proprietário.'
  };
