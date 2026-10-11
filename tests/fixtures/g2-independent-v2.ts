@@ -1,0 +1,57 @@
+/**
+ * Conjunto INDEPENDENTE V2 — criado APÓS congelar o classificador no commit
+ * a4d9cd2ba0e645fd7bd0c3cd1fd98d34c3cb467a.
+ * Rótulos manuais, cenários sintéticos. NÃO usar para ajustar o candidato V2.
+ */
+import type {LukbrixCase} from '../../lib/lukbrix-g2-sandbox';
+export const G2_INDEPENDENT_V2:readonly LukbrixCase[]=[
+ {id:'blind-a01-boolean',label:'false',sourceLine:'const active = true;',
+  quote:'const active = true;',claim:'active inicia com false.',verifiedFacts:[]},
+ {id:'blind-a02-arithmetic',label:'false',sourceLine:'const subtotal = 10 - 4;',
+  quote:'const subtotal = 10 - 4;',claim:'subtotal recebe a soma de 10 e 4.',verifiedFacts:[]},
+ {id:'blind-a03-latency',label:'false',sourceLine:'await fetch("/orders");',
+  quote:'await fetch("/orders");',claim:'A requisição sempre termina em menos de dois segundos.',verifiedFacts:[]},
+ {id:'blind-a04-access',label:'false',sourceLine:'if(user) return dashboard;',
+  quote:'if(user) return dashboard;',claim:'Qualquer pessoa pode abrir qualquer dashboard sem autenticação.',verifiedFacts:[]},
+ {id:'blind-a05-storage',label:'false',sourceLine:'const amount = 3 * 5;',
+  quote:'const amount = 3 * 5;',claim:'amount recebe produto de 3 por 5 e salva no banco de dados.',verifiedFacts:[]},
+ {id:'blind-a06-loaded',label:'false',sourceLine:'router.push("/files");',
+  quote:'router.push("/files");',claim:'A página files foi carregada com sucesso.',verifiedFacts:[]},
+ {id:'blind-a07-global-edit',label:'false',sourceLine:'const archived = false;',
+  quote:'const archived = false;',claim:'archived é false e pode ser editado por qualquer usuário.',verifiedFacts:[]},
+ {id:'blind-a08-all-clients',label:'false',sourceLine:'setLoading(false);',
+  quote:'setLoading(false);',claim:'O carregamento fica false e todos os clientes recebem notificação.',verifiedFacts:[]},
+ {id:'blind-a09-written',label:'false',sourceLine:'return pay.toFixed(2);',
+  quote:'return pay.toFixed(2);',claim:'O método grava o resultado no banco de dados.',verifiedFacts:[]},
+ {id:'blind-a10-delete',label:'false',sourceLine:'if(!user) return null;',
+  quote:'if(!user) return null;',claim:'A função retorna null quando user é falso e apaga a conta.',verifiedFacts:[]},
+ {id:'blind-a11-permanence',label:'false',sourceLine:'const complete = true;',
+  quote:'const complete = true;',claim:'complete inicia com true e fica garantido para sempre.',verifiedFacts:[]},
+ {id:'blind-a12-decimal',label:'false',sourceLine:'return value.toFixed(2);',
+  quote:'return value.toFixed(2);',claim:'O método formata com três casas decimais.',verifiedFacts:[]},
+
+ {id:'blind-b01-bool',label:'true',sourceLine:'const canEdit = false;',
+  quote:'const canEdit = false;',claim:'canEdit começa com false.',verifiedFacts:[]},
+ {id:'blind-b02-add',label:'true',sourceLine:'const total = 5 + 3;',
+  quote:'const total = 5 + 3;',claim:'total recebe a soma de 5 e 3.',verifiedFacts:[]},
+ {id:'blind-b03-product',label:'true',sourceLine:'const gross = 6 * 2;',
+  quote:'const gross = 6 * 2;',claim:'gross recebe o produto de 6 por 2.',verifiedFacts:[]},
+ {id:'blind-b04-length',label:'true',sourceLine:'const count = orders.length;',
+  quote:'const count = orders.length;',claim:'count recebe o tamanho de orders.',verifiedFacts:[]},
+ {id:'blind-b05-catch',label:'true',sourceLine:'catch(e){showError(e);}',
+  quote:'catch(e){showError(e);}',claim:'Existe um catch que chama showError.',verifiedFacts:[]},
+ {id:'blind-b06-load',label:'true',sourceLine:'setLoading(true);',
+  quote:'setLoading(true);',claim:'O código liga o sinal de carregamento.',verifiedFacts:[]},
+ {id:'blind-b07-nav',label:'true',sourceLine:'router.push("/payments");',
+  quote:'router.push("/payments");',claim:'Solicita navegação para payments.',verifiedFacts:[]},
+ {id:'blind-b08-fixed',label:'true',sourceLine:'return total.toFixed(2);',
+  quote:'return total.toFixed(2);',claim:'O método formata com duas casas decimais.',verifiedFacts:[]},
+ {id:'blind-b09-guard',label:'true',sourceLine:'if(!user) return null;',
+  quote:'if(!user) return null;',claim:'A função retorna null quando user é falso.',verifiedFacts:[]},
+ {id:'blind-b10-status',label:'true',sourceLine:'if(!r.ok)throw new Error("HTTP");',
+  quote:'if(!r.ok)throw',claim:'Existe um teste r.ok para status da resposta.',verifiedFacts:[]},
+ {id:'blind-b11-callback',label:'true',sourceLine:'const refresh=useCallback(()=>{},[]);',
+  quote:'const refresh=useCallback',claim:'refresh usa useCallback.',verifiedFacts:[]},
+ {id:'blind-b12-coercion',label:'true',sourceLine:'const valid = !!value;',
+  quote:'const valid = !!value;',claim:'valid recebe coerção booleana de value.',verifiedFacts:[]}
+];
