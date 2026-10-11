@@ -42,3 +42,11 @@ Os exemplos atuais de treino/holdout são pequenos e sintéticos: não comprovam
 ## Indicador de roteiro
 
 G1 está disponível em produção e G2 está na fase experimental. Isso representa **1/4 (25%) das quatro etapas arquiteturais publicadas**, não 25% de inteligência superior. A G2 só conta como concluída depois de avaliação e publicação separadas; G3 e G4 são propostas futuras. Não existe uma porcentagem científica para chegar a uma suposta 'super IA suprema'.
+
+## Avaliação de generalização com 16 problemas inéditos
+
+Há um terceiro conjunto **separado da seleção de política** em `tests/lukbrix-g2-unseen.test.ts`, com casos de validação de permissão, fila de rede, manipulação de estado, comentário adversarial, citação inventada e também fatos verdadeiros de operações simples. O processo seleciona candidatos usando somente treino e holdout anteriores, e o conjunto inédito é usado **apenas para auditar**. A auditoria compara a política original e a candidata e nunca muda a seleção baseado nesse conjunto.
+
+**Resultado do benchmark offline (16 casos rotulados):** 10/16 julgados corretamente (62,5%); **2/8 falsos rejeitados (25%)** e **8/8 verdadeiros aceitos (100%)**. A política candidata também atingiu 10/16: **nenhuma melhoria nesse conjunto**. O gate de generalização a reprovou. Por exemplo, uma citação literal de `if (user) return profile` não prova que somente administradores têm acesso — e a política ainda pode aceitar essa conclusão errada.
+
+Esses números medem **apenas nosso filtro local neste pequeno conjunto sintético criado manualmente**, não precisão de IA, segurança global, descoberta de tecnologia ou capacidade de raciocínio do modelo. Nem o treino nem o holdout anteriores foram suficientes para prever essa limitação. Antes de promover mudanças, ampliar o conjunto com problemas realmente inéditos e avaliações independentes, e avaliar separadamente as respostas do modelo real durante uma sessão autenticada. A G2 não pode ser lançada como sistema autocorretivo pleno enquanto o gate reprovar.
