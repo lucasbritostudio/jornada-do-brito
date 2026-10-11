@@ -82,6 +82,46 @@ export function proposalReferencesEvidence(text:string,visibleLines:number[]):bo
  return cited.every(n=>visible.has(n));
 }
 
+/** Fallback barato e verificável: mostra só linhas reais, sem inventar erros. */
+export function groundedPlanningFallback(excerpt:string,objective:string,maxLines=5):string{
+ const normalize=(value:string)=>value.normalize('NFD')
+  .replace(/[\u0300-\u036f]/g,'').toLowerCase();
+ const question=normalize(objective);
+ const ignored=new Set([
+  'para','como','quero','pode','essa','esse','onde','mais','menos',
+  'codigo','analise','analisar','verifique','verificar','central','desenvolvimento',
+  'arquivo','tela','real','linhas','linha','cite','comprovam','respostas',
+  'precisa','tenha','existe','corrija','melhore','completa','evidencias'
+ ]);
+ const words=[...new Set(question.match(/[a-z][a-z0-9_]{2,}/g)||[])]
+  .filter(w=>!ignored.has(w));
+ if(/carregament|espera|processand|loading|feedback/.test(question))
+  words.push('busy','asking','consultando','analisando','disabled','loading');
+ if(/\bask\b/.test(question))words.push('asking');
+ const lines=excerpt.split('\n')
+  .map(raw=>{const match=/^L(\d+): (.*)$/.exec(raw);return match?{
+    number:Number(match[1]),code:match[2]
+  }:null;}).filter((line):line is {number:number;code:string}=>line!==null);
+ const rank=lines.map(line=>{
+  const code=normalize(line.code);
+  let score=words.reduce((value,word)=>value+(code.includes(word)?2:0),0);
+  if(/\bask\b/.test(question)&&/\b(?:async\s+)?function\s+ask\b/.test(code))score+=7;
+  if(/carregament|loading|feedback/.test(question)&&
+    /(consultando|analisando|disabled=|setbusy\(|setasking\()/.test(code))score+=4;
+  return {...line,score};
+ }).filter(line=>line.score>0)
+  .sort((a,b)=>b.score-a.score||a.number-b.number);
+ const picked=rank.slice(0,maxLines).sort((a,b)=>a.number-b.number);
+ const heading='A IA não sustentou o diagnóstico com linhas válidas. '+
+  'Para não inventar, mostro trechos encontrados no código:';
+ if(!picked.length)return heading+'\n\nNenhuma linha relacionada à pergunta foi encontrada na amostra. '+
+  'Não é possível confirmar nem negar o problema com esta consulta.';
+ return heading+'\n\n'+picked.map(line=>
+  'L'+line.number+': '+(line.code.length>170?line.code.slice(0,170)+'…':line.code)
+ ).join('\n')+'\n\nEsses trechos mostram o que existe, não comprovam falhas. '+
+  'Nenhuma mudança foi executada.';
+}
+
 /** Uma resposta longa não pode terminar abruptamente no meio da linha. */
 export function completePlanningText(text:string,maxChars=3600):string{
  if(text.length<=maxChars)return text.trim();
