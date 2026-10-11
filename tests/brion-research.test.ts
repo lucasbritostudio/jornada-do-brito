@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {
- BRION_NAME,createBrionOpportunity,formatBrionOpportunity,
+ LUKBRIX_NAME,createBrionOpportunity,formatBrionOpportunity,
  measureBrionBenchmark,evaluateBrionPromotion,type BrionSignal
 } from '../lib/brion-research';
 
@@ -10,11 +10,11 @@ const signals:BrionSignal[]=[
  'unverified','provider_unavailable','provider_rate_limited','provider_timeout'
 ];
 for(const signal of signals){
- test('BRIÔN cria hipótese falsificável para: '+signal,()=>{
+ test('LUKBRIX cria hipótese falsificável para: '+signal,()=>{
   const r=createBrionOpportunity({
    signal,factCount:3,sourceTruncated:true,filesExamined:1
   });
-  assert.equal(r.name,BRION_NAME);
+  assert.equal(r.name,LUKBRIX_NAME);
   assert.match(r.generation,/G1/);
   assert.match(r.status,/proposal_only/);
   assert.ok(r.hypothesis.length>40);
@@ -26,7 +26,7 @@ for(const signal of signals){
   assert.match(formatBrionOpportunity(r),/Oportunidade de pesquisa/);
  });
 }
-test('BRIÔN não inventa melhora nem nível quando dados são inválidos',()=>{
+test('LUKBRIX não inventa melhora nem nível quando dados são inválidos',()=>{
  assert.throws(()=>createBrionOpportunity({
   signal:'approved',factCount:-1,sourceTruncated:false,filesExamined:1
  }),/INVALID_RESEARCH/);
@@ -43,7 +43,7 @@ test('BRIÔN não inventa melhora nem nível quando dados são inválidos',()=>{
   falseRejected:11,falseTotal:10,trueAccepted:3,trueTotal:3
  }),/INVALID_BENCHMARK/);
 });
-test('BRIÔN mede precisão do FILTRO em casos ROTULADOS, não LLM externa',()=>{
+test('LUKBRIX mede precisão do FILTRO em casos ROTULADOS, não LLM externa',()=>{
  const data=measureBrionBenchmark({
   falseRejected:10,falseTotal:10,trueAccepted:3,trueTotal:3
  });
@@ -52,7 +52,7 @@ test('BRIÔN mede precisão do FILTRO em casos ROTULADOS, não LLM externa',()=>
  assert.equal(data.balancedScore,1);
  assert.equal(data.cases,13);
 });
-test('BRIÔN bloqueia candidato quando começa a aceitar um diagnóstico falso',()=>{
+test('LUKBRIX bloqueia candidato quando começa a aceitar um diagnóstico falso',()=>{
  const baseline={falseRejected:9,falseTotal:10,trueAccepted:3,trueTotal:3};
  const bad={falseRejected:8,falseTotal:10,trueAccepted:3,trueTotal:3};
  const v=evaluateBrionPromotion(baseline,bad);
@@ -60,14 +60,14 @@ test('BRIÔN bloqueia candidato quando começa a aceitar um diagnóstico falso',
  assert.equal(v.automaticallyDeployable,false);
  assert.equal(v.requiresHumanApproval,true);
 });
-test('BRIÔN bloqueia candidato com menos casos ou mais falsos negativos',()=>{
+test('LUKBRIX bloqueia candidato com menos casos ou mais falsos negativos',()=>{
  const base={falseRejected:10,falseTotal:10,trueAccepted:3,trueTotal:3};
  const less={falseRejected:9,falseTotal:9,trueAccepted:3,trueTotal:3};
  assert.equal(evaluateBrionPromotion(base,less).candidatePassesGate,false);
  const tooStrict={falseRejected:10,falseTotal:10,trueAccepted:2,trueTotal:3};
  assert.equal(evaluateBrionPromotion(base,tooStrict).candidatePassesGate,false);
 });
-test('BRIÔN recomenda apenas candidaturas avaliadas sem regressão e nunca publica',()=>{
+test('LUKBRIX recomenda apenas candidaturas avaliadas sem regressão e nunca publica',()=>{
  const base={falseRejected:9,falseTotal:10,trueAccepted:2,trueTotal:3};
  const candidate={falseRejected:10,falseTotal:10,trueAccepted:3,trueTotal:3};
  const verdict=evaluateBrionPromotion(base,candidate);
