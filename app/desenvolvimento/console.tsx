@@ -12,6 +12,7 @@ type Snapshot={
   vercel:Connector&{deployments:Deployment[]};
   capabilities:{diagnostics:boolean;edit:boolean;deploy:boolean;rollback:boolean};
   nextStep:string;
+  githubInstallation?:{installed:boolean;privateKeyConfigured:boolean;effectiveAccess:string};
 };
 const date=(iso?:string|null)=>iso?new Intl.DateTimeFormat('pt-BR',{
   timeZone:'America/Fortaleza',dateStyle:'short',timeStyle:'short'
@@ -88,8 +89,10 @@ export default function DevelopmentConsole(){
    <div className="dc-overview">
     <article className="dc-metric">
      <span className="dc-label">GITHUB</span>
-     <h2>{data.github.connected?'Conectado':'Ainda sem conexão'}</h2>
-     <p>{data.github.message||'Acesso de leitura autorizado ao repositório definido.'}</p>
+     <h2>{data.github.connected?'Conectado':data.githubInstallation?.installed?'App instalada':'Ainda sem conexão'}</h2>
+     <p>{data.github.connected?'Conexão de leitura testada.':data.githubInstallation?.installed
+      ?(data.githubInstallation.privateKeyConfigured?'Chave informada; falta testar a autenticação do aplicativo.':'Instalação confirmada. Falta configurar a chave privada no servidor e conectar o autenticador.')
+      :(data.github.message||'Ainda não foi registrada a instalação da GitHub App.')}</p>
      <small>Repositório: {data.repository}</small>
     </article>
     <article className="dc-metric">
