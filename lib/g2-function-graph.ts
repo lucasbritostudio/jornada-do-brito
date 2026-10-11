@@ -194,7 +194,11 @@ export function buildG2FunctionGraph(sources:readonly GraphSource[]):FunctionGra
    if(!current)continue;
    let target:GraphSymbol|undefined,ambiguity=false;
    if(call.namespace&&call.shadowed){
-    gaps.push({path,line:call.line,symbol:call.namespace,reason:'ambiguous_binding'});
+    // reply.json() é método de objeto LOCAL, não import desconhecido.
+    // Reportar ambiguidade apenas quando há um namespace IMPORTADO de
+    // mesmo nome que é ocultado por variável/parâmetro local.
+    if(info.imports.has(call.namespace))
+     gaps.push({path,line:call.line,symbol:call.namespace,reason:'ambiguous_binding'});
     continue;
    }
    if(call.namespace){
