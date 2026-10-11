@@ -1,0 +1,37 @@
+name: Validar controle de produção (sem deploy)
+on:
+  push:
+    branches:
+      - feat/controle-producao-72h
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - name: Checar código da branch
+        uses: actions/checkout@v4
+      - name: Usar Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Instalar dependências para testes sem alterar lockfile
+        run: npm install --ignore-scripts --no-audit --no-fund --package-lock=false
+      - name: Validar tipagem TypeScript
+        run: npx tsc --noEmit --incremental false
+      - name: Testes de regressão existentes + produção
+        run: npm test
+      - name: Conferir isolamento
+        run: |
+          test ! -f .env.production
+          echo "Testes concluídos sem build/deploy e sem acesso ao banco de produção."

@@ -269,6 +269,10 @@ export default function Dashboard() {
               {label}
             </button>
           ))}
+          <a href="/producao" style={{display:'flex',gap:11,alignItems:'center',width:'100%',padding:'11px 12px',borderRadius:12,background:'#1c312b',color:'#d4eb99',fontWeight:750,fontSize:13}}>
+            <span className="dot-icon" aria-hidden="true" />
+            Minha produção
+          </a>
           <button
             onClick={() => setTab('settings')}
             className={tab === 'settings' ? 'active' : ''}
@@ -362,6 +366,7 @@ export default function Dashboard() {
             {label}
           </button>
         ))}
+        <a href="/producao" style={{padding:'12px 9px',color:'#d4eb99',fontWeight:750,whiteSpace:'nowrap'}}>Produção</a>
       </nav>
 
       {quick && (

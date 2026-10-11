@@ -1,0 +1,45 @@
+name: Teste visual mobile — produção sem deploy
+on:
+  push:
+    branches:
+      - feat/controle-producao-72h
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-mobile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  iphone-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      JORNADA_SESSION_SECRET: 'synthetic-mobile-ci-secret-never-used-in-production-1234'
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Instalar dependências de teste sem credenciais de projeto
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          npm install --no-save --no-audit --no-fund playwright
+          npx playwright install --with-deps chromium
+      - name: Compilar a interface
+        run: npm run build
+      - name: Emular telas de iPhone com sessões e dados artificiais
+        run: |
+          npm run start -- -p 3188 > /tmp/jornada-mobile-next.log 2>&1 &
+          for i in $(seq 1 40); do
+            if curl --fail --silent --output /dev/null http://127.0.0.1:3188/login; then break; fi
+            sleep 1
+          done
+          node tests/production-mobile.mjs
+      - name: Falha de servidor — diagnóstico sem dados pessoais
+        if: failure()
+        run: tail -n 70 /tmp/jornada-mobile-next.log || true
