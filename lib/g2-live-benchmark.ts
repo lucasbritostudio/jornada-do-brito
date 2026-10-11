@@ -11,7 +11,7 @@ export type LiveSource={path:string;content:string};
 export type LiveChallenge={
  id:string;scenario:string;entry:string;sources:readonly LiveSource[];
  expected:{linked:boolean;cause:LiveCause;fix:LiveFix;
-  evidence:{file:string;line:number}};
+  evidence:{file:string;line:number}[]};
 };
 export type LiveAnswer={
  caseId:string;linked:boolean;cause:LiveCause;fix:LiveFix;
@@ -124,8 +124,8 @@ export function gradeG2LiveAnswers(
   const citation=Boolean(valid&&answer!.evidence&&
    item.sources.some(s=>s.path===answer!.evidence!.file&&
     !!s.content.split('\n')[answer!.evidence!.line-1])&&
-   answer!.evidence!.file===item.expected.evidence.file&&
-   answer!.evidence!.line===item.expected.evidence.line);
+   item.expected.evidence.some(ref=>ref.file===answer!.evidence!.file&&
+    ref.line===answer!.evidence!.line));
   const runtimeHonest=Boolean(valid&&!answer!.runtimeConfirmed);
   if(link)linksCorrect++;if(cause)causesCorrect++;if(fix)fixesCorrect++;
   if(valid&&!answer!.linked&&item.expected.linked)falseNegativeLinks.push(item.id);
