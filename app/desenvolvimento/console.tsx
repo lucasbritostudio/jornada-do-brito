@@ -29,6 +29,11 @@ export default function DevelopmentConsole(){
  const [question,setQuestion]=useState('');
  const [answer,setAnswer]=useState('');
  const [asking,setAsking]=useState(false);
+ const [planningGoal,setPlanningGoal]=useState('');
+ const [planningFile,setPlanningFile]=useState('app/desenvolvimento/console.tsx');
+ const [planningBusy,setPlanningBusy]=useState(false);
+ const [planningResult,setPlanningResult]=useState('');
+ const [planningSha,setPlanningSha]=useState('');
  const refresh=useCallback(async()=>{
   setBusy(true);setError('');
   try{
@@ -53,6 +58,21 @@ export default function DevelopmentConsole(){
    setAnswer(v.text);
   }catch(e){setError(e instanceof Error?e.message:'Não foi possível analisar.');}
   finally{setAsking(false);}
+ }
+ async function planChange(e:React.FormEvent){
+  e.preventDefault();if(planningBusy||planningGoal.trim().length<10)return;
+  setPlanningBusy(true);setPlanningResult('');setPlanningSha('');setError('');
+  try{
+   const res=await fetch('/api/desenvolvimento/plan',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    cache:'no-store',body:JSON.stringify({file:planningFile,objective:planningGoal})
+   });
+   const json=await res.json();
+   if(!res.ok)throw new Error(json.error||'Não consegui preparar o plano.');
+   setPlanningResult(json.proposal+'\n\nPlano somente para revisão. Nenhum arquivo foi alterado ou publicado.');
+   setPlanningSha(json.baseSha);
+  }catch(e){setError(e instanceof Error?e.message:'Falha ao preparar o plano.');}
+  finally{setPlanningBusy(false);}
  }
  const failures=data?.github.runs.filter(r=>r.result==='failure'||r.result==='timed_out')||[];
  const latest=data?.vercel.deployments[0];
@@ -84,7 +104,35 @@ export default function DevelopmentConsole(){
    {answer&&<p className="dc-answer" role="status">{answer}</p>}
    <small>A IA não publica nem altera código nesta etapa. Logs e informações sensíveis não são exibidos na conversa.</small>
   </section>
-  {error&&<p className="dc-error" role="alert">{error}</p>}
+  <section className="dc-plan">
+   <span className="dc-label">FASE 2 / LABORATÓRIO DE CÓDIGO</span>
+   <h2>Planejar uma melhoria.</h2>
+   <p>Peça uma mudança e eu consulto o arquivo real no GitHub para montar um plano. A edição e a publicação ainda exigem o executor e permissões adicionais.</p>
+   <form onSubmit={planChange} className="dc-plan-form">
+    <label htmlFor="dc-plan-file">Qual tela vamos melhorar?</label>
+    <select id="dc-plan-file" value={planningFile} onChange={e=>{setPlanningFile(e.target.value);setPlanningResult('');}}>
+     <option value="app/desenvolvimento/console.tsx">Central de Desenvolvimento</option>
+     <option value="app/desenvolvimento/development.css">Visual da Central</option>
+     <option value="app/producao/dashboard.tsx">Minha Produção</option>
+     <option value="app/producao/production.css">Visual de Produção</option>
+     <option value="app/globals.css">Visual geral do aplicativo</option>
+    </select>
+    <label htmlFor="dc-plan-goal">O que você quer mudar?</label>
+    <textarea id="dc-plan-goal" rows={2} minLength={10} maxLength={650}
+     placeholder="Ex.: Deixe os cartões da central mais simples no iPhone e mostre a falha mais importante primeiro."
+     value={planningGoal} onChange={e=>{setPlanningGoal(e.target.value);setPlanningResult('');}}/>
+    <button disabled={planningBusy||planningGoal.trim().length<10} type="submit">
+      {planningBusy?'Lendo código e planejando…':'Analisar código e planejar'}
+    </button>
+   </form>
+   {planningResult&&<div className="dc-proposal" role="status">
+    <strong>Plano de alteração · aguardando executor</strong>
+    <small>Versão do código: {planningSha.slice(0,12)}</small>
+    <p>{planningResult}</p>
+   </div>}
+   <small>Acesso de leitura. Nenhum arquivo é modificado por este formulário.</small>
+  </section>
+  {error&&<p className="dc-error" role="alert">{error}</p>
   {!data?<div className="dc-loading">Conferindo conexões…</div>:<>
    <div className="dc-overview">
     <article className="dc-metric">
@@ -102,9 +150,9 @@ export default function DevelopmentConsole(){
      <small>Projeto: jornada-do-brito</small>
     </article>
     <article className="dc-metric">
-     <span className="dc-label">FALHAS NO CI</span>
+     <span className="dc-label">FALHAS NO HISTÓRICO DO CI</span>
      <h2>{data.github.connected?failures.length:'Não consultadas'}</h2>
-     <p>{data.github.connected?'Ocorrências entre os últimos 8 jobs consultados. Não é um diagnóstico de todos os bugs.':'Disponível após conectar leitura do GitHub.'}</p>
+     <p>{data.github.connected?'Inclui versões anteriores. Uma falha histórica não significa erro na versão publicada.':'Disponível após conectar leitura do GitHub.'}</p>
     </article>
    </div>
    <div className="dc-layout">
@@ -137,7 +185,7 @@ export default function DevelopmentConsole(){
     <span className="dc-label">EVOLUÇÃO DA SUA IA</span>
     <h2>O que já está estruturado</h2>
     <div className="dc-timeline">
-     <article><b>01</b><div><strong>Diagnóstico de código e deploy</strong><p>Central instalada em branch de desenvolvimento. Ligações com os serviços aguardam autorização própria.</p></div></article>
+     <article><b>01</b><div><strong>Diagnóstico de código e deploy</strong><p>Central publicada e GitHub/Vercel conectados em leitura.</p></div></article>
      <article><b>02</b><div><strong>IA entende erros e propõe correções</strong><p>Leitura restrita de logs, hipóteses justificadas e revisão do código em diff.</p></div></article>
      <article><b>03</b><div><strong>IA prepara alterações sem quebrar o sistema</strong><p>Branch separada, pull request, testes automatizados e sua autorização.</p></div></article>
      <article><b>04</b><div><strong>Publicação protegida e reversão</strong><p>Segundo fator, SHA validado, confirmação antes de publicar, verificação pós-deploy e rollback.</p></div></article>
