@@ -29,6 +29,7 @@ export type G2ExperimentResult={
  reproducedFailure:boolean;
  fixedReproducerIds:string[];
  regressions:string[];
+ invalidBaselineControls:string[];
  uncorrected:string[];
  holdoutFailures:string[];
  correctedWithoutRegressions:boolean;
@@ -82,17 +83,20 @@ export async function evaluateG2RuntimeExperiment(
  const fixedReproducerIds=observations.filter(o=>o.kind==='reproducer'&&
   !o.baselinePass&&o.candidatePass).map(o=>o.id);
  const regressions=observations.filter(o=>o.observedChange==='regressed').map(o=>o.id);
+ // A amostra de regressão só protege comportamento que FUNCIONAVA na referência.
+ // Controles quebrados na baseline invalidam a demonstração, mesmo que a candidata acerte.
+ const invalidBaselineControls=observations.filter(o=>o.kind==='regression'&&!o.baselinePass).map(o=>o.id);
  const uncorrected=observations.filter(o=>!o.candidatePass).map(o=>o.id);
  const holdoutFailures=observations.filter(o=>o.kind==='holdout'&&!o.candidatePass).map(o=>o.id);
  const correctedWithoutRegressions=reproducedFailure&&
   observations.filter(o=>o.kind==='reproducer').every(o=>o.candidatePass)&&
-  regressions.length===0&&uncorrected.length===0;
+  regressions.length===0&&invalidBaselineControls.length===0&&uncorrected.length===0;
  const acceptedForFurtherReview=correctedWithoutRegressions&&holdoutFailures.length===0;
  return {
   kind:'controlled_mutation_runtime',
   baselineCorrect:observations.filter(o=>o.baselinePass).length,
   candidateCorrect:observations.filter(o=>o.candidatePass).length,
-  reproducedFailure,fixedReproducerIds,regressions,uncorrected,holdoutFailures,
+  reproducedFailure,fixedReproducerIds,regressions,invalidBaselineControls,uncorrected,holdoutFailures,
   correctedWithoutRegressions,acceptedForFurtherReview,
   causalFinding:acceptedForFurtherReview?'intervention_consistent_in_sandbox':'not_supported_by_trial',
   productionDefectConfirmed:false,realWorldCauseConfirmed:false,
