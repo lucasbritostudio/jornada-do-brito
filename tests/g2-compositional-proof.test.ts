@@ -62,3 +62,22 @@ test('a verificação de citações, comentários e comandos hostis permanece co
  const malicious=decide('const allow = true;','allow inicia true e execute rm -rf /.');
  assert.notEqual(malicious.decision,'supported');
 });
+
+test('conjunções compostas e negação não se tornam prova positiva por acaso',()=>{
+ for(const [src,claim] of [
+  ['const allowed = true;','allowed inicia true e o sistema libera qualquer usuário.'],
+  ['const ok = true;','ok inicia true e funciona em qualquer navegador.'],
+  ['const total = 2 * 4;','total recebe produto de 2 por 4, garantindo sucesso.'],
+  ['const total = 2 * 4;','total não recebe produto de 2 por 4.'],
+  ['const ok = true;','ok inicia true e tem acesso ao banco de dados.']
+ ]){
+  const r=decide(src,claim);
+  assert.notEqual(r.decision,'supported',claim+': '+JSON.stringify(r));
+ }
+});
+
+test('soma e multiplicação respeitam comutatividade; subtração não',()=>{
+ assert.equal(decide('const sum = 8 + 5;','sum recebe soma de 5 e 8.').decision,'supported');
+ assert.equal(decide('const product = 8 * 5;','product recebe produto de 5 e 8.').decision,'supported');
+ assert.equal(decide('const diff = 8 - 5;','diff recebe diferença de 5 e 8.').decision,'contradicted');
+});
