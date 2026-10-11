@@ -14,6 +14,7 @@ export type PairedProofAudit={
  baselineFalseWithheld:number;candidateFalseWithheld:number;falseCases:number;
  baselineTrueAccepted:number;candidateTrueAccepted:number;trueCases:number;
  correctedCases:string[];regressedCases:string[];
+ falselyApprovedCases:string[];correctClaimsWithheld:string[];
  insufficientCases:string[];
  exactOneSidedP:number;
  improvedOnSample:boolean;
@@ -64,6 +65,8 @@ export function evaluateProofCandidate(cases:readonly LukbrixCase[]):PairedProof
   baselineFalseWithheld,candidateFalseWithheld,falseCases:falseCases.length,
   baselineTrueAccepted,candidateTrueAccepted,trueCases:trueCases.length,
   correctedCases:corrected,regressedCases:regressions,
+  falselyApprovedCases:audits.filter(c=>c.label==='false'&&!c.candidateCorrect).map(c=>c.id),
+  correctClaimsWithheld:audits.filter(c=>c.label==='true'&&!c.candidateCorrect).map(c=>c.id),
   insufficientCases:audits.filter(c=>c.finding.decision==='insufficient').map(c=>c.id),
   exactOneSidedP:p,improvedOnSample:improved,
   // Gate APENAS para levar à próxima avaliação independente e revisão humana.
