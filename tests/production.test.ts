@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {deadlineFor,productionUrgency,paymentSummary,
- overlappingEditions,transitionAllowed,emptyProduction,type Work} from '../lib/production';
+ overlappingEditions,overlappingBookings,transitionAllowed,emptyProduction,type Work} from '../lib/production';
 
 const capture='2026-10-13T21:00:00.000Z'; // terça, 18:00 Fortaleza
 function work(extra:Partial<Work>={}):Work{
@@ -60,4 +60,15 @@ test('dois vídeos gravados no mesmo dia avisam conflito de edição',()=>{
  ]);
  assert.equal(conflict.length,1);
  assert.deepEqual(conflict[0].workIds,['video-1','video-2']);
+});
+
+test('gravações agendadas no mesmo dia geram aviso, sem bloquear contratos',()=>{
+ const clashes=overlappingBookings([
+  work({id:'video-a',stage:'scheduled',capturedAt:undefined,scheduledAt:'2026-10-13T11:00:00Z'}),
+  work({id:'video-b',stage:'scheduled',capturedAt:undefined,scheduledAt:'2026-10-13T18:00:00Z'}),
+  work({id:'video-entregue',stage:'delivered',capturedAt:undefined,scheduledAt:'2026-10-13T15:00:00Z'})
+ ]);
+ assert.equal(clashes.length,1);
+ assert.equal(clashes[0].date,'2026-10-13');
+ assert.deepEqual(clashes[0].workIds,['video-a','video-b']);
 });
