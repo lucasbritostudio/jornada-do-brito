@@ -7,6 +7,7 @@
  * Somente analisa fontes fornecidas, com SHA idêntico e escopo do grafo G2.
  */
 import ts from 'typescript';
+import {listG2StaticFetches} from './g2-static-fetch';
 import {inspectG2ControlFlow,type G2FlowFact} from './g2-flow-facts';
 import {
  buildG2FunctionGraph,traceG2Function,type GraphSource,type GraphSymbol,
@@ -16,7 +17,7 @@ import {
 export type G2CausalScenario='http_500'|'network_failure'|'unexpected_json'|'slow_response';
 export type G2CausalStep={
  from:string;to:string;path:string;line:number;
- relation:'direct_call'|'http_route_candidate';
+ relation:'direct_call'|'http_route_candidate'|'route_reexport';
  evidence:'verified_static_reference'|'framework_convention_only';
 };
 export type G2CausalHypothesis={
@@ -42,38 +43,37 @@ export type G2CausalReport={
  deployAllowed:false;
 };
 
-type FetchSite={line:number;url:string;method:string|null};
-const methods=new Set(['GET','POST','PUT','PATCH','DELETE','OPTIONS','HEAD']);
-function findFetchSites(file:GraphSource):FetchSite[]{
+function findFetchSites(file:GraphSource){
  const sf=ts.createSourceFile(file.path,file.content,ts.ScriptTarget.Latest,true,
   file.path.endsWith('.tsx')?ts.ScriptKind.TSX:ts.ScriptKind.TS);
- const out:FetchSite[]=[];
- function visit(n:ts.Node){
-  if(ts.isCallExpression(n)&&ts.isIdentifier(n.expression)&&n.expression.text==='fetch'&&
-    n.arguments.length>0&&ts.isStringLiteral(n.arguments[0])){
-   const url=n.arguments[0].text;
-   if(/^\/api\/[a-zA-Z0-9/_-]+$/.test(url)){
-    let method:string|null='GET';
-    if(n.arguments[1]){
-     method=null;
-     const options=n.arguments[1];
-     if(ts.isObjectLiteralExpression(options)){
-      const p=options.properties.find(p=>ts.isPropertyAssignment(p)&&
-       (ts.isIdentifier(p.name)&&p.name.text==='method'||
-        ts.isStringLiteral(p.name)&&p.name.text==='method'));
-      if(!p)method='GET';
-      else if(ts.isPropertyAssignment(p)&&ts.isStringLiteral(p.initializer)&&
-       methods.has(p.initializer.text.toUpperCase()))
-       method=p.initializer.text.toUpperCase();
-     }
-    }
-    out.push({line:sf.getLineAndCharacterOfPosition(n.getStart(sf)).line+1,url,method});
-   }
-  }
-  ts.forEachChild(n,visit);
+ return listG2StaticFetches(sf);
+}
+function findReexport(
+ route:GraphSource,method:string,sources:ReadonlyMap<string,GraphSource>,
+ symbols:readonly GraphSymbol[]
+):{routeId:string;target:GraphSymbol;line:number}|null{
+ const sf=ts.createSourceFile(route.path,route.content,ts.ScriptTarget.Latest,true);
+ for(const stmt of sf.statements){
+  if(!ts.isExportDeclaration(stmt)||!stmt.moduleSpecifier||
+   !ts.isStringLiteral(stmt.moduleSpecifier)||!stmt.exportClause||
+   !ts.isNamedExports(stmt.exportClause)||stmt.isTypeOnly)continue;
+  const match=stmt.exportClause.elements.filter(e=>!e.isTypeOnly&&e.name.text===method);
+  if(match.length!==1)continue;
+  const original=match[0].propertyName?.text??match[0].name.text;
+  const spec=stmt.moduleSpecifier.text;
+  // Não inferir caminhos arbitrários ou bibliotecas externas, exigir fonte
+  // explicitamente fornecida, mesmo SHA, e export real.
+  if(!spec.startsWith('@/'))continue;
+  const base=spec.slice(2);
+  const targetFile=[base,base+'.ts',base+'.tsx',base+'/index.ts'].find(p=>sources.has(p));
+  if(!targetFile)continue;
+  const candidates=symbols.filter(x=>x.path===targetFile&&x.parent===null&&
+   x.exportName===original);
+  if(candidates.length!==1)continue;
+  const line=sf.getLineAndCharacterOfPosition(stmt.getStart(sf)).line+1;
+  return {routeId:route.path+'#'+method+'@'+line,target:candidates[0],line};
  }
- visit(sf);
- return out;
+ return null;
 }
 function findOwner(symbols:readonly GraphSymbol[],path:string,line:number):GraphSymbol|null{
  const candidates=symbols.filter(s=>s.path===path&&s.startLine<=line&&s.endLine>=line)
@@ -144,13 +144,22 @@ export function analyzeG2CausalChain(
   const route=sourceMap.get(expected);
   const handlers=graph.symbols.filter(s=>s.path===expected&&s.name===method&&
    s.exportName===method&&s.parent===null);
-  if(!route||handlers.length!==1){unresolved.push(gap);continue;}
-  const handler=handlers[0];
+  if(!route){unresolved.push(gap);continue;}
+  const forwarded=handlers.length===0?findReexport(route,method,sourceMap,graph.symbols):null;
+  if(handlers.length!==1&&!forwarded){unresolved.push(gap);continue;}
+  const handler=handlers.length===1?handlers[0]:forwarded!.target;
+  const routeEntry=forwarded?forwarded.routeId:handler.id;
   steps.push({
-   from:owner.id,to:handler.id,path:gap.path,line:gap.line,
+   from:owner.id,to:routeEntry,path:gap.path,line:gap.line,
    relation:'http_route_candidate',evidence:'framework_convention_only'
   });
-  const server=traceG2Function(graph,expected,method,4);
+  if(forwarded){
+   steps.push({
+    from:forwarded.routeId,to:forwarded.target.id,path:expected,line:forwarded.line,
+    relation:'route_reexport',evidence:'verified_static_reference'
+   });
+  }
+  const server=traceG2Function(graph,handler.path,handler.name,4);
   for(const symbol of server.nodes)visited.add(symbol.id);
   for(const e of server.edges)steps.push({
    from:e.from,to:e.to,path:e.path,line:e.line,
