@@ -5,6 +5,7 @@ import {safeSystemPolicy,sanitizeForLlm} from '@/lib/ai-policy';
 import {allowedPlanningPath,readPlanningSource,validPlanningObjective,relatedPlanningPath} from '@/lib/devops-planning';
 import {evidencePartsV2,assessLabModelResponse,localLabReview,type LabEvidence,type LabModelReviewCode} from '@/lib/devops-lab-v2';
 import {formatVerifiedFacts} from '@/lib/devops-claims';
+import {createBrionOpportunity,formatBrionOpportunity} from '@/lib/brion-research';
 import {DEVOPS_REPO} from '@/lib/devops-policy';
 
 export const runtime='nodejs';
@@ -104,13 +105,21 @@ export async function POST(req:Request){
    provider_timeout:'O provedor excedeu o tempo de resposta'
   };
   const statusText=reason[analysisStatus];
+  // Pesquisa e autoavaliação locais: não chama outro modelo nem executa código.
+  const research=createBrionOpportunity({
+   signal:analysisStatus,
+   factCount:source.staticFacts.length,
+   sourceTruncated:source.truncated,
+   filesExamined:related?2:1
+  });
   return NextResponse.json({
    ok:true,mode:'proposal_only',executed:false,version:'2.2',
    repository:DEVOPS_REPO,file,baseSha:source.refSha,
    sourceTruncated:source.truncated,sourceTotalLines:source.totalLines,
    evidenceLevel:review.evidenceLevel,evidenceSupported:review.evidenceSupported,
    evidenceCount:review.observations,
-   proposal:'FATOS VERIFICADOS NO CÓDIGO (análise local):\n'+facts+'\n\nStatus da IA: '+statusText+'\n\n'+review.text,
+   proposal:'FATOS VERIFICADOS NO CÓDIGO (análise local):\n'+facts+'\n\nStatus da IA: '+statusText+'\n\n'+review.text+'\n\n'+formatBrionOpportunity(research),
+   research:{name:research.name,generation:research.generation,status:research.status,priorityIndex:research.priorityIndex,requiresApproval:true},
    analysisStatus,
    filesExamined:[file,...(related?[related.path]:[])],provider,usage,
    statement:'NENHUM ARQUIVO MODIFICADO; NENHUM DEPLOY DISPARADO'
