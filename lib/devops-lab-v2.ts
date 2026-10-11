@@ -1,3 +1,5 @@
+import {contradictsVerifiedFacts,type VerifiedFact} from './devops-claims';
+
 /**
  * Laboratório V2: seleção barata de fontes e auditoria determinística de citações.
  * Este arquivo só trata TEXTO; jamais escreve em repositórios, dados ou Vercel.
@@ -79,7 +81,28 @@ export function selectLabEvidence(maskedSource:string,objective:string,maxChars=
   return {index:i+1,score};
  }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score||a.index-b.index);
  const selected=new Set<number>();
- // Pequeno contexto de arquivo, mas NÃO sacrificar os trechos relacionados.
+ // Preserva a função COMPLETA solicitada, para a IA não concluir
+ // "falta tratamento" por ter recebido só a linha do fetch.
+ const requestedNames=['ask','refresh','copyAnswer','copyPlan','planChange']
+  .filter(name=>new RegExp('\\b'+name+'\\b','i').test(objective));
+ for(const name of requestedNames){
+  const start=display.findIndex(line=>
+   (name==='refresh'
+    ? /\bconst refresh\s*=\s*useCallback\s*\(/.test(line)
+    : new RegExp('\\b(?:async\\s+)?function\\s+'+name+'\\s*\\(').test(line)));
+  if(start<0)continue;
+  const endPredicate=name==='refresh'
+   ? (line:string)=>/\},\s*\[\s*\]\s*\);/.test(line)
+   : (line:string)=>/^\s*\}\s*;?\s*$/.test(line);
+  const end=display.findIndex((line,i)=>i>start&&endPredicate(line));
+  if(end<0||end-start>50)continue;
+  const group=Array.from({length:end-start+1},(_,i)=>start+i+1);
+  if(group.some(n=>display[n-1]==='[LINHA EXTENSA OMITIDA POR SEGURANÇA]'))continue;
+  const trial=new Set([...selected,...group]);
+  if(formatSelection(display,trial,maxChars).valid)
+   for(const n of group)selected.add(n);
+ }
+ // Completa primeiro a área solicitada; depois acrescenta outras linhas relacionadas.
  for(const candidate of ranked.slice(0,24)){
   const add=[candidate.index-2,candidate.index-1,candidate.index,candidate.index+1,candidate.index+2]
    .filter(n=>n>=1&&n<=totalLines&&display[n-1]!=='[LINHA EXTENSA OMITIDA POR SEGURANÇA]');
@@ -113,7 +136,11 @@ export function evidencePartsV2(evidence:LabEvidence,maxChars=3400):string[]{
 }
 
 /** Resposta JSON da IA. Valida TRECHOS LITERAIS, não supõe verdade semântica. */
-export function reviewLabResponse(raw:string,evidence:LabEvidence):LabReview|null{
+export function reviewLabResponse(
+ raw:string,evidence:LabEvidence,verifiedFacts:VerifiedFact[]=[],
+ related?:LabEvidence&{path:string},
+ primaryPath=''
+):LabReview|null{
  let json:unknown;
  try{
   const cleaned=raw.trim().replace(/^\x60\x60\x60(?:json)?\s*/i,'').replace(/\s*\x60\x60\x60$/,'');
@@ -126,11 +153,16 @@ export function reviewLabResponse(raw:string,evidence:LabEvidence):LabReview|nul
  const notes:string[]=[];
  for(const finding of findings){
   if(!finding||typeof finding!=='object'||Array.isArray(finding))return null;
-  const {line,quote,interpretation}=(finding as Record<string,unknown>);
+  const {line,quote,interpretation,file}=(finding as Record<string,unknown>);
+  if(file!==undefined&&(typeof file!=='string'||file.length>220))return null;
+  const fromRelated=file!==undefined&&file!==primaryPath;
+  if(fromRelated&&(!related||file!==related.path))return null;
+  // A verificação acima garante que related existe quando fromRelated é true.
+  const citedEvidence:LabEvidence=fromRelated?related!:evidence;
   if(!Number.isSafeInteger(line)||typeof line!=='number'||typeof quote!=='string'||
      typeof interpretation!=='string'||quote.trim().length<9||quote.length>180||
      interpretation.length>220||!interpretation.trim())return null;
-  const code=evidence.lines[line];
+  const code=citedEvidence.lines[line];
   if(!code||code.startsWith('[LINHA')||code.includes('[LINHA DE CONFIGURAÇÃO OCULTA]')||
      /^\s*(?:\/\/|\/\*|\*|<!--|#)/.test(code))return null;
   // Texto hostil dentro de arquivos é dado, nunca prova de sucesso ou execução.
@@ -140,16 +172,28 @@ export function reviewLabResponse(raw:string,evidence:LabEvidence):LabReview|nul
   // Normalização só de espaços: texto citado tem de estar LITERALMENTE na linha.
   const clean=(s:string)=>s.replace(/\s+/g,' ').trim();
   if(!clean(code).includes(clean(quote))||clean(quote)==='')return null;
-  notes.push('L'+line+': '+clean(quote)+'\n  Interpretação da IA (a revisar): '+interpretation.trim());
+  // Uma linha presente NÃO demonstra que algo esteja ausente nas outras.
+  // Afirmações de falta/ausência exigem inspeção de todo o bloco; por isso
+  // nunca as classificamos como observação confirmada a partir de 1 citação.
+  const unsupportedAbsence=/(?:\bsem\s+(?:valid|verific|chec|trat|defin|us|indic)|\bnao\s+(?:existe|ha|aparece|possui|tem|encontr|mostra|esta|verific|valid)|\bfalta\b|\bfaltando\b|\bausencia\b|\bincomplet[oa]\b|\bnao\s+foi\s+(?:definid|implementad))/i;
+  if(unsupportedAbsence.test(normalize(interpretation)))return null;
+  if(contradictsVerifiedFacts(interpretation,verifiedFacts))return null;
+  notes.push((file||primaryPath? (file||primaryPath)+':' : '')+'L'+line+': '+clean(quote)+'\n  Interpretação da IA (a revisar): '+interpretation.trim());
  }
  if(!Array.isArray(record.uncertain)||record.uncertain.length>3||
     !record.uncertain.every(x=>typeof x==='string'&&x.length<=190))return null;
+ // Não transmitir hipóteses que contrariem uma inspeção estática concluída.
+ if(record.uncertain.some(x=>contradictsVerifiedFacts(x,verifiedFacts)))return null;
  if(typeof record.suggestion!=='string'||record.suggestion.length>450||
     typeof record.test!=='string'||record.test.length>300)return null;
+ // Validar a recomendação, não só o trecho de código citado.
+ // Uma frase que manda adicionar o que já existe não pode ser apresentada como melhoria.
+ if(contradictsVerifiedFacts(record.suggestion,verifiedFacts))return null;
  // Os riscos são cenários futuros, NÃO erros já comprovados. Sem percentuais inventados.
  const risks=record.risks===undefined?[]:record.risks;
  if(!Array.isArray(risks)||risks.length>3||
     !risks.every(r=>typeof r==='string'&&r.length>=10&&r.length<=220))return null;
+ if(risks.some(r=>contradictsVerifiedFacts(r,verifiedFacts)))return null;
  const text='LABORATÓRIO 2.0 — CITAÇÕES CONFERIDAS\n\n'+
   notes.join('\n\n')+
   '\n\nAinda não comprovado: '+(record.uncertain.length?record.uncertain.join(' / '):'Nenhum erro foi comprovado só pelas linhas citadas.')+
