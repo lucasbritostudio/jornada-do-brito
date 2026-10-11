@@ -49,10 +49,11 @@ export async function saveCampaigns(state: CampaignStore): Promise<CampaignStore
   return state;
 }
 
-export async function mutateCampaigns(change: (store: CampaignStore) => void) {
+export async function mutateCampaigns(change: (store: CampaignStore) => void | boolean) {
   for (let attempt = 0; attempt < 4; attempt++) {
     const state = await loadCampaigns();
-    change(state);
+    const shouldSave = change(state);
+    if (shouldSave === false) return state;
     try { return await saveCampaigns(state); }
     catch (e) { if (!(e instanceof CampaignConflict) || attempt === 3) throw e; }
   }
