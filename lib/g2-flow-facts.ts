@@ -23,7 +23,7 @@ function create(sf:ts.SourceFile,node:ts.Node,input:GraphSource,kind:G2FlowFact[
  const line=lineOf(sf,node);
  // Contém somente a linha L, nunca conteúdos confidenciais, URLs com tokens
  // ou expressão inteira do usuário; apenas um rótulo de estrutura confiável.
- const signature=kind='await_fetch'?'await fetch(...)':
+ const signature=kind==='await_fetch'?'await fetch(...)':
   kind==='http_status_throw'?'if (!response.ok) throw':
   kind==='catch_updates_error'?'catch -> setError(...)':'finally -> setLoading(false)';
  return {kind,path:input.path,line,signature,scope:'static_syntax_only',runtimeTested:false};
