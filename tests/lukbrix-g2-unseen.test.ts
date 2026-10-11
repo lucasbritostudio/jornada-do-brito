@@ -52,8 +52,8 @@ test('G2 no desafio externo revela as limitações reais do verificador',()=>{
  const r=auditG2OnUnseen(LUKBRIX_G2_SAMPLE_TRAIN,LUKBRIX_G2_SAMPLE_HOLDOUT,novel);
  assert.equal(r.sampleCount,16);
  assert.ok(r.candidateCorrect!==null);
- assert.ok(r.candidateCorrect!<=16);
- assert.ok(r.candidateCorrect!<16,'um filtro de citações não prova a interpretação');
+ assert.ok(r.candidateCorrect! <= 16);
+ assert.ok(r.candidateCorrect! < 16,'um filtro de citações não prova a interpretação');
  assert.ok(r.unresolvedFalseCases.length>0);
  assert.ok(r.unresolvedFalseCases.includes('novel-authorization'));
  assert.ok(r.unresolvedFalseCases.includes('novel-retry'));
@@ -84,7 +84,7 @@ test('G2 rejeita desafio desequilibrado e entradas insuficientes',()=>{
  assert.throws(()=>auditG2OnUnseen(
   LUKBRIX_G2_SAMPLE_TRAIN,LUKBRIX_G2_SAMPLE_HOLDOUT,novel.slice(0,4)
  ),/G2_NOVEL_INVALID_SIZE/);
- const tooFewTrue=novel.slice(0,11);
+ const tooFewTrue=novel.slice(0,12);
  assert.throws(()=>auditG2OnUnseen(
   LUKBRIX_G2_SAMPLE_TRAIN,LUKBRIX_G2_SAMPLE_HOLDOUT,tooFewTrue
  ),/G2_NOVEL_INVALID_SIZE|G2_NOVEL_UNBALANCED/);
