@@ -4,9 +4,9 @@
  * Sem chamadas externas, execução de código, deploy ou escrita de arquivos.
  */
 export type LiveCause='linked'|'wrong_method'|'missing_route'|'not_exported'|
- 'unreachable_call'|'unknown_dynamic'|'wrong_route';
+ 'unreachable_call'|'unknown_dynamic'|'wrong_route'|'source_unprovided';
 export type LiveFix='none'|'correct_http_method'|'add_missing_route'|
- 'export_handler'|'invoke_helper'|'gather_runtime_evidence'|'correct_route_path';
+ 'export_handler'|'invoke_helper'|'gather_runtime_evidence'|'correct_route_path'|'request_missing_source';
 export type LiveSource={path:string;content:string};
 export type LiveChallenge={
  id:string;scenario:string;entry:string;sources:readonly LiveSource[];
@@ -29,11 +29,11 @@ export type LiveScore={
 };
 const causes=new Set<LiveCause>([
  'linked','wrong_method','missing_route','not_exported','unreachable_call',
- 'unknown_dynamic','wrong_route'
+ 'unknown_dynamic','wrong_route','source_unprovided'
 ]);
 const fixes=new Set<LiveFix>([
  'none','correct_http_method','add_missing_route','export_handler',
- 'invoke_helper','gather_runtime_evidence','correct_route_path'
+ 'invoke_helper','gather_runtime_evidence','correct_route_path','request_missing_source'
 ]);
 function obj(x:unknown):x is Record<string,unknown>{
  return x!==null&&typeof x==='object'&&!Array.isArray(x);
@@ -84,9 +84,9 @@ export function buildG2LivePrompt(item:LiveChallenge):{
    'Uma ligação correta não é bug: escolha cause=linked e fix=none.',
    'Se não for comprovada, classifique a razão e escolha a intervenção mais segura.',
    'Causas permitidas: linked, wrong_method, missing_route, not_exported,',
-   'unreachable_call, unknown_dynamic, wrong_route.',
+   'unreachable_call, unknown_dynamic, wrong_route, source_unprovided.',
    'Correções permitidas: none, correct_http_method, add_missing_route,',
-   'export_handler, invoke_helper, gather_runtime_evidence, correct_route_path.',
+   'export_handler, invoke_helper, gather_runtime_evidence, correct_route_path, request_missing_source.',
    'Responda SOMENTE JSON exato, sem Markdown:',
    '{"caseId":"ID","linked":false,"cause":"wrong_method",',
    '"fix":"correct_http_method","evidence":{"file":"CAMINHO","line":1},',
