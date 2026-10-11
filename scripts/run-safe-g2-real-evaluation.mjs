@@ -13,8 +13,8 @@ try{verifyJornadaLink();}catch{
  console.log('G2_LIVE_BLOCKED_PROJECT_LINK');
  process.exit(4);
 }
-if(!existsSync(resolve('.env.local'))){
- console.log('G2_LIVE_BLOCKED_LOCAL_ENV');
+if(!existsSync(resolve('.env.g2.local'))){
+ console.log('G2_LIVE_BLOCKED_DEDICATED_TEST_ENV');
  process.exit(4);
 }
 if(process.env.CI==='true'||process.env.GITHUB_ACTIONS==='true'){
@@ -22,7 +22,7 @@ if(process.env.CI==='true'||process.env.GITHUB_ACTIONS==='true'){
  process.exit(4);
 }
 const result=spawnSync(process.execPath,[
- '--env-file-if-exists=.env.local',
+ '--env-file-if-exists=.env.g2.local',
  '--experimental-strip-types',
  '--experimental-loader','./tests/ts-extension-loader.mjs',
  'scripts/g2-real-ai-evaluation.mts'
