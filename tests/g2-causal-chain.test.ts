@@ -120,3 +120,34 @@ test('fonte REAL da Jornada: plano é outra rota distinta e não se mistura à p
   s.to.includes('app/api/desenvolvimento/plan/route.ts#POST@')));
  assert.ok(plan.hypotheses[0].whyNotProven.includes('runtime'));
 });
+
+test('reexportação RELATIVA estática pode ser seguida sem ler arquivos fora da allowlist',()=>{
+ const sources=[
+  p('app/challenges/screen.tsx',
+   'export function start(){return fetch("/api/challenge",{method:"POST"});}'),
+  p('app/api/challenge/route.ts',
+   "export {POST} from '../../../lib/challenge/handler';"),
+  p('lib/challenge/handler.ts','export function POST(){return 1;}')
+ ];
+ const r=analyzeG2CausalChain(sources,'app/challenges/screen.tsx','start','http_500');
+ assert.ok(r.structuralSteps.some(x=>x.relation==='http_route_candidate'&&
+  x.to.includes('app/api/challenge/route.ts#POST@')));
+ assert.ok(r.structuralSteps.some(x=>x.relation==='route_reexport'&&
+  x.to.includes('lib/challenge/handler.ts#POST@')));
+ assert.equal(r.causeConfirmed,false);
+});
+test('reexportação relativa para destino não fornecido ou não exportado NÃO cria ligação',()=>{
+ const client=p('app/challenges/screen.tsx',
+  'export function start(){return fetch("/api/challenge",{method:"POST"});}');
+ for(const target of [
+  "export {POST} from '../../../lib/challenge/missing';",
+  "export {POST} from '../../../../private/other';",
+  "export {POST} from '@/lib/challenge/handler';"
+ ]){
+  const inputs=[client,p('app/api/challenge/route.ts',target),
+   p('lib/challenge/handler.ts','function POST(){return 1;}')];
+  const r=analyzeG2CausalChain(inputs,'app/challenges/screen.tsx','start','http_500');
+  assert.ok(!r.structuralSteps.some(x=>x.relation==='http_route_candidate'),target);
+  assert.ok(r.unresolved.some(x=>x.reason==='http_route_unexamined'));
+ }
+});
