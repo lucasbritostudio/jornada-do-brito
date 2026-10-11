@@ -72,6 +72,10 @@ export default function ProductionDashboard(){
  const [captureId,setCaptureId]=useState('');
  const [captureAt,setCaptureAt]=useState('');
  const [customers,setCustomers]=useState<{id:string;name:string}[]>([]);
+ const [assistantMessage,setAssistantMessage]=useState('');
+ const [assistantBusy,setAssistantBusy]=useState(false);
+ const [assistantAnswer,setAssistantAnswer]=useState('');
+ const [assistantOperation,setAssistantOperation]=useState('');
 
  const refresh=useCallback(async()=>{
    const r=await fetch('/api/production',{cache:'no-store'});
@@ -81,7 +85,11 @@ export default function ProductionDashboard(){
    setData(json);setNow(Date.now());
  },[]);
  useEffect(()=>{
-   refresh().catch(e=>setError(e instanceof Error?e.message:String(e)));
+   (async()=>{
+      const response=await fetch('/api/production/onboard',{method:'POST',cache:'no-store'});
+      if(!response.ok)throw new Error('Não consegui sincronizar os clientes conhecidos. Vou manter os dados existentes e tentar carregar a fila.');
+      await refresh();
+    })().catch(async e=>{setError(e instanceof Error?e.message:String(e));await refresh().catch(()=>{});});
    fetch('/api/state',{cache:'no-store'}).then(r=>r.ok?r.json():null)
      .then(j=>{if(j?.contacts)setCustomers(j.contacts.map((c:{id:string;name:string})=>({id:c.id,name:c.name})));}).catch(()=>{});
    const timer=setInterval(()=>setNow(Date.now()),60_000);
@@ -112,6 +120,21 @@ export default function ProductionDashboard(){
      await refresh();setNotice(success);return true;
    }catch(e){setError(e instanceof Error?e.message:'Ocorreu um erro.');return false;}
    finally{setBusy(false);}
+ }
+ async function sendAssistant(){
+    const message=assistantMessage.trim();if(!message||assistantBusy)return;
+    const operationId=assistantOperation||createOperationId();
+    setAssistantOperation(operationId);setAssistantBusy(true);setError('');setAssistantAnswer('');
+    try{
+      const response=await fetch('/api/production/assistant',{method:'POST',
+        headers:{'content-type':'application/json'},
+        body:JSON.stringify({message,operationId})});
+      const json=await response.json();
+      if(!response.ok)throw new Error(json.error||'Não consegui interpretar seu relato.');
+      setAssistantAnswer(json.message||'Não consegui identificar uma atualização segura.');
+      if(json.changed){setAssistantMessage('');setAssistantOperation('');await refresh();}
+    }catch(e){setError(e instanceof Error?e.message:'Não foi possível atualizar o trabalho.');}
+    finally{setAssistantBusy(false);}
  }
  async function create(){
    const cents=fee.trim()?round(fee):undefined;
@@ -155,6 +178,18 @@ export default function ProductionDashboard(){
    <h1>Produção <em>no prazo.</em></h1>
    <p>Da gravação à aprovação e ao recebimento. Seu relógio só começa no dia seguinte à captação.</p>
   </header>
+  <section className="pr-assistant-card">
+   <div><span className="pr-mini">JORNADA IA · SUA PRODUÇÃO</span><h2>Me conte. Eu organizo.</h2>
+    <p>Não precisa preencher fichas. Seus clientes conhecidos são carregados automaticamente. Diga o que aconteceu com um vídeo e eu atualizo as etapas.</p></div>
+   <div className="pr-assistant-form"><textarea aria-label="Atualizar a produção conversando com a IA" rows={2}
+     value={assistantMessage} placeholder="Ex.: Acabei de gravar o vídeo do Garreto agora"
+     onChange={e=>{setAssistantMessage(e.target.value);setAssistantOperation('');}}/>
+    <button disabled={assistantBusy||!assistantMessage.trim()} onClick={sendAssistant}>
+     {assistantBusy?'Organizando…':'Atualizar por conversa'}</button>
+   </div>
+   {assistantAnswer&&<p className="pr-assistant-answer" role="status">{assistantAnswer}</p>}
+   <small>O prazo só começa com a gravação confirmada. Propostas e dinheiro ainda não recebido não viram contratos ou pagamentos.</small>
+  </section>
   <section className="pr-rule"><div><span>Prazo combinado</span><b>72 horas</b><small>Contadas a partir de 00h do dia seguinte, no horário de Fortaleza</small></div>
    <div><span>Meta interna</span><b>48 horas</b><small>Primeira versão enviada ao cliente para avaliação</small></div>
    <div><span>Entrega x avaliação</span><b>Separadas</b><small>Retorno do cliente e ajustes não apagam seu envio no prazo</small></div></section>
