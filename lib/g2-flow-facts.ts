@@ -7,7 +7,7 @@ import type {GraphSource} from './g2-function-graph';
 
 export type G2FlowFact={
  kind:'await_fetch'|'http_status_throw'|'catch_updates_error'|'finally_resets_loading';
- path:string;line:number;quote:string;
+ path:string;line:number;signature:string;
  scope:'static_syntax_only';runtimeTested:false;
 };
 export type G2FlowInspection={
@@ -23,10 +23,10 @@ function create(sf:ts.SourceFile,node:ts.Node,input:GraphSource,kind:G2FlowFact[
  const line=lineOf(sf,node);
  // Contém somente a linha L, nunca conteúdos confidenciais, URLs com tokens
  // ou expressão inteira do usuário; apenas um rótulo de estrutura confiável.
- const quote=kind==='await_fetch'?'await fetch(...)':
+ const signature=kind='await_fetch'?'await fetch(...)':
   kind==='http_status_throw'?'if (!response.ok) throw':
   kind==='catch_updates_error'?'catch -> setError(...)':'finally -> setLoading(false)';
- return {kind,path:input.path,line,quote,scope:'static_syntax_only',runtimeTested:false};
+ return {kind,path:input.path,line,signature,scope:'static_syntax_only',runtimeTested:false};
 }
 function functionBodies(sf:ts.SourceFile,name:string):ts.ConciseBody[]{
  const bodies:ts.ConciseBody[]=[];
@@ -76,12 +76,20 @@ export function inspectG2ControlFlow(input:GraphSource,name:string):G2FlowInspec
    ts.isPropertyAccessExpression(n.expression.operand)&&
    n.expression.operand.name.text==='ok'){
    let hasFetchBinding=false;
-   scan(fnBody,x=>{
-    if(isFetchAwait(x)&&ts.isIdentifier(x.name)&&
-     ts.isIdentifier(n.expression.operand.expression)&&
-     x.name.text===n.expression.operand.expression.text)
-     hasFetchBinding=true;
-   });
+   const operand=n.expression.operand;
+   const bindingName=ts.isIdentifier(operand.expression)?operand.expression.text:null;
+   // Apenas atribuição await fetch no MESMO bloco e antes do if. Buscar
+   // fetch em outro bloco poderia inventar uma relação de fluxo.
+   const enclosing=n.parent;
+   if(bindingName&&ts.isBlock(enclosing)){
+    for(const statement of enclosing.statements){
+     if(statement.getStart(sf)>=n.getStart(sf))break;
+     scan(statement,x=>{
+      if(isFetchAwait(x)&&ts.isIdentifier(x.name)&&x.name.text===bindingName)
+       hasFetchBinding=true;
+     });
+    }
+   }
    const branchThrows=ts.isThrowStatement(n.thenStatement)||
     ts.isBlock(n.thenStatement)&&n.thenStatement.statements.some(x=>ts.isThrowStatement(x));
    if(hasFetchBinding&&branchThrows)insert(n,'http_status_throw');
