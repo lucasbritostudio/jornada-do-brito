@@ -140,7 +140,7 @@ export default function DevelopmentConsole(){
    <small>A IA não publica nem altera código nesta etapa. Logs e informações sensíveis não são exibidos na conversa.</small>
   </section>
   <section className="dc-plan">
-   <span className="dc-label">FASE 2 / LABORATÓRIO DE CÓDIGO · V2.1</span>
+   <span className="dc-label">FASE 2 / LABORATÓRIO DE CÓDIGO · V2.2</span>
    <h2>Planejar uma melhoria.</h2>
    <p>Peça uma mudança e eu consulto o arquivo real no GitHub para montar um plano. A edição e a publicação ainda exigem o executor e permissões adicionais.</p>
    <form onSubmit={planChange} className="dc-plan-form">
@@ -169,7 +169,7 @@ export default function DevelopmentConsole(){
     </div>
     <small>Versão do código: {planningSha.slice(0,12)} · {planningPartial?'Fonte parcial, com trechos omitidos':'Fonte examinada por inteiro'}</small>
      {planningFiles.length>0&&<small>Arquivos consultados ({planningFiles.length}): {planningFiles.join(' · ')}</small>}
-     <small>{planningEvidenceLevel==='checked_quotes'?`Laboratório 2.1 · ${planningEvidenceCount} citação(ões) conferida(s) literalmente; interpretação ainda precisa de revisão.`:planningEvidenceLevel==='source_only'?'Laboratório 2.1 · mostrando linhas reais; análise da IA não foi confirmada.':planningReferences?'A IA citou linhas presentes no código; conclusões em revisão.':'Sem diagnóstico confirmado.'}</small>
+     <small>{planningEvidenceLevel==='checked_quotes'?`Laboratório 2.2 · ${planningEvidenceCount} citação(ões) conferida(s) literalmente; interpretação ainda precisa de revisão.`:planningEvidenceLevel==='source_only'?'Laboratório 2.2 · mostrando linhas reais; análise da IA não foi confirmada.':planningReferences?'A IA citou linhas presentes no código; conclusões em revisão.':'Sem diagnóstico confirmado.'}</small>
     {copyStatus==='error'&&<small role="alert">Não foi possível copiar automaticamente. Selecione o texto abaixo e copie manualmente.</small>}
     <p>{planningResult}</p>
    </div>}
