@@ -277,6 +277,10 @@ export default function Dashboard() {
             <span className="dot-icon" aria-hidden="true" />
             Desenvolvimento
           </a>
+          <a href="/youtube" style={{display:'flex',gap:11,alignItems:'center',width:'100%',padding:'11px 12px',borderRadius:12,background:'#35252b',color:'#f3c0c8',fontWeight:750,fontSize:13}}>
+            <span className="dot-icon" aria-hidden="true" />
+            Jornada YouTube
+          </a>
           <button
             onClick={() => setTab('settings')}
             className={tab === 'settings' ? 'active' : ''}
@@ -372,6 +376,7 @@ export default function Dashboard() {
         ))}
         <a href="/producao" style={{padding:'12px 9px',color:'#d4eb99',fontWeight:750,whiteSpace:'nowrap'}}>Produção</a>
         <a href="/desenvolvimento" style={{padding:'12px 9px',color:'#d0e7e7',fontWeight:750,whiteSpace:'nowrap'}}>Dev</a>
+        <a href="/youtube" style={{padding:'12px 9px',color:'#f3c0c8',fontWeight:750,whiteSpace:'nowrap'}}>YouTube</a>
       </nav>
 
       {quick && (
