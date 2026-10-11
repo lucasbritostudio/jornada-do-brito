@@ -194,7 +194,7 @@ export function reviewLabResponse(
  if(!Array.isArray(risks)||risks.length>3||
     !risks.every(r=>typeof r==='string'&&r.length>=10&&r.length<=220))return null;
  if(risks.some(r=>contradictsVerifiedFacts(r,verifiedFacts)))return null;
- const text='LABORATÓRIO 2.0 — CITAÇÕES CONFERIDAS\n\n'+
+ const text='LABORATÓRIO 2.2 — CITAÇÕES CONFERIDAS\n\n'+
   notes.join('\n\n')+
   '\n\nAinda não comprovado: '+(record.uncertain.length?record.uncertain.join(' / '):'Nenhum erro foi comprovado só pelas linhas citadas.')+
   '\n\nO que pode dar errado (hipóteses, não fatos): '+(risks.length?risks.join(' / '):'Exige investigação antes de afirmar riscos.')+
@@ -204,8 +204,64 @@ export function reviewLabResponse(
  return {text,evidenceSupported:true,evidenceLevel:'checked_quotes',observations:notes.length};
 }
 
+/** Explica POR QUE uma resposta não foi usada, sem revelar prompt nem texto privado. */
+export type LabModelReviewCode=
+ 'approved'|'invalid_format'|'no_findings'|'invalid_citation'|'contradiction'|'unverified';
+export type LabModelReview={review:LabReview|null;code:LabModelReviewCode};
+export function assessLabModelResponse(
+ raw:string,evidence:LabEvidence,verifiedFacts:VerifiedFact[]=[],
+ related?:LabEvidence&{path:string},primaryPath=''
+):LabModelReview{
+ const review=reviewLabResponse(raw,evidence,verifiedFacts,related,primaryPath);
+ if(review)return {review,code:'approved'};
+ let parsed:unknown;
+ try{
+  const clean=raw.trim().replace(/^\x60\x60\x60(?:json)?\s*/i,'')
+   .replace(/\s*\x60\x60\x60$/,'');
+  parsed=JSON.parse(clean);
+ }catch{return {review:null,code:'invalid_format'};}
+ if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))
+  return {review:null,code:'invalid_format'};
+ const value=parsed as Record<string,unknown>;
+ if(!Array.isArray(value.findings)||value.findings.length===0)
+  return {review:null,code:'no_findings'};
+ for(const finding of value.findings){
+  if(!finding||typeof finding!=='object'||Array.isArray(finding))
+   return {review:null,code:'invalid_citation'};
+  const f=finding as Record<string,unknown>;
+  const src=f.file===undefined||f.file===primaryPath?evidence:
+   (related&&f.file===related.path?related:null);
+  if(!src||typeof f.line!=='number'||!Number.isSafeInteger(f.line)||
+     typeof f.quote!=='string'||typeof src.lines[f.line]!=='string'||
+     !src.lines[f.line].replace(/\s+/g,' ').includes(f.quote.replace(/\s+/g,' ').trim()))
+   return {review:null,code:'invalid_citation'};
+ }
+ const interpretations=value.findings.map((f:unknown)=>
+  (f&&typeof f==='object'&&!Array.isArray(f)&&typeof (f as Record<string,unknown>).interpretation==='string')
+    ?(f as Record<string,string>).interpretation:'');
+ const extras=[value.suggestion,...(Array.isArray(value.uncertain)?value.uncertain:[]),
+   ...(Array.isArray(value.risks)?value.risks:[])];
+ if([...interpretations,...extras].some(x=>typeof x==='string'&&
+    contradictsVerifiedFacts(x,verifiedFacts)))
+  return {review:null,code:'contradiction'};
+ return {review:null,code:'unverified'};
+}
+
 /** Plano de emergência quando a IA não segue o formato, falha ou cita fonte falsa. */
-export function localLabReview(evidence:LabEvidence,objective:string):LabReview{
+export function localLabReview(evidence:LabEvidence,objective:string,verifiedFacts:VerifiedFact[]=[]):LabReview{
+ // Se há fatos conferidos independentemente, não preencher a resposta
+ // com cinco linhas aleatórias só para aparentar que a IA analisou o pedido.
+ if(verifiedFacts.length){
+  const isAsk=/\bask\b|status|resposta|requisi[cç][aã]o/i.test(objective);
+  return {
+   text:'LABORATÓRIO 2.2 — ANÁLISE DA IA NÃO CONFIRMADA\n\n'+
+    'Os fatos positivos já conferidos estão acima. Não há diagnóstico adicional do modelo aprovado.\n'+
+    'O que ainda não foi verificado: comportamento real no navegador, indisponibilidade da rede e integração com o servidor.\n'+
+    (isAsk?'Teste recomendado (não executado): simular resposta HTTP 500 e falha de rede; confirmar a mensagem de erro e o fim do carregamento.\n':'')+
+    'Nenhum arquivo foi alterado.',
+   evidenceSupported:false,evidenceLevel:'source_only',observations:verifiedFacts.length
+  };
+ }
  const query=terms(objective);
  const scored=evidence.visibleLines.map(number=>{
   const code=evidence.lines[number];
@@ -215,7 +271,7 @@ export function localLabReview(evidence:LabEvidence,objective:string):LabReview{
   .sort((a,b)=>a.number-b.number);
  const lines=scored.map(x=>'L'+x.number+': '+x.code.slice(0,170));
  return {
-  text:'LABORATÓRIO 2.0 — EVIDÊNCIAS DIRETAS\n\n'+
+  text:'LABORATÓRIO 2.2 — EVIDÊNCIAS DIRETAS\n\n'+
    (lines.length?lines.join('\n'):'Não encontrei trechos relacionados à pergunta no código recebido.')+
    '\n\nA IA não apresentou uma análise suficientemente comprovada. '+
    'Essas linhas são reais, mas não confirmam erros. '+
