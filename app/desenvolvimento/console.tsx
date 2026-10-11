@@ -28,13 +28,21 @@ export default function DevelopmentConsole(){
  const [error,setError]=useState('');
  const [question,setQuestion]=useState('');
  const [answer,setAnswer]=useState('');
+ const [answerCopied,setAnswerCopied]=useState(false);
  const [asking,setAsking]=useState(false);
  const [planningGoal,setPlanningGoal]=useState('');
  const [planningFile,setPlanningFile]=useState('app/desenvolvimento/console.tsx');
  const [planningBusy,setPlanningBusy]=useState(false);
  const [planningResult,setPlanningResult]=useState('');
  const [planningSha,setPlanningSha]=useState('');
+ const [planningPartial,setPlanningPartial]=useState(false);
+ const [planningReferences,setPlanningReferences]=useState(false);
  const [copyStatus,setCopyStatus]=useState<'idle'|'copied'|'error'>('idle');
+ async function copyAnswer(){
+  if(!answer)return;
+  try{await navigator.clipboard.writeText(answer);setAnswerCopied(true);}
+  catch{setError('Não foi possível copiar a resposta automaticamente.');}
+ }
  async function copyPlan(){
   if(!planningResult)return;
   const content=`Plano do laboratório da Jornada do Brito\nArquivo: ${planningFile}\nCommit base: ${planningSha||'não informado'}\n\n${planningResult}`;
@@ -59,7 +67,7 @@ export default function DevelopmentConsole(){
  useEffect(()=>{refresh();},[refresh]);
  async function ask(e:React.FormEvent){
   e.preventDefault();if(asking||question.trim().length<3)return;
-  setAsking(true);setAnswer('');setError('');
+  setAsking(true);setAnswer('');setAnswerCopied(false);setError('');
   try{
    const r=await fetch('/api/desenvolvimento/chat',{
     method:'POST',headers:{'Content-Type':'application/json'},
@@ -83,6 +91,8 @@ export default function DevelopmentConsole(){
    if(!res.ok)throw new Error(json.error||'Não consegui preparar o plano.');
    setPlanningResult(json.proposal+'\n\nPlano somente para revisão. Nenhum arquivo foi alterado ou publicado.');
    setPlanningSha(json.baseSha);
+   setPlanningPartial(Boolean(json.sourceTruncated));
+   setPlanningReferences(Boolean(json.evidenceSupported));
   }catch(e){setError(e instanceof Error?e.message:'Falha ao preparar o plano.');}
   finally{setPlanningBusy(false);}
  }
@@ -102,18 +112,24 @@ export default function DevelopmentConsole(){
   <section className="dc-chat">
    <div><span className="dc-label">ASSISTENTE DE ENGENHARIA</span>
     <h2>Me conte o problema.</h2>
-    <p>Eu analiso os resultados disponíveis e explico o que precisa ser investigado. Edição e deploy ainda não estão liberados.</p>
+    <p>Aqui eu consulto resultados dos testes e publicações, não o código-fonte. Para analisar código real, use o Laboratório logo abaixo.</p>
    </div>
    <form onSubmit={ask} className="dc-chat-form">
     <textarea rows={2} aria-label="Pergunta para IA Desenvolvedora"
      value={question} maxLength={700}
      placeholder="Ex.: Por que o último deploy não funcionou?"
-     onChange={e=>{setQuestion(e.target.value);setAnswer('');}}/>
+     onChange={e=>{setQuestion(e.target.value);setAnswer('');setAnswerCopied(false);}}/>
     <button type="submit" disabled={asking||question.trim().length<3}>
      {asking?'Analisando…':'Perguntar à IA'}
     </button>
    </form>
-   {answer&&<p className="dc-answer" role="status">{answer}</p>}
+   {answer&&<>
+     <p className="dc-answer" role="status">{answer}</p>
+     <button type="button" onClick={copyAnswer} aria-label="Copiar resposta do assistente"
+      style={{padding:'9px 14px',marginTop:8,borderRadius:9,cursor:'pointer',border:'1px solid #badd9a',background:'#dff6a5',color:'#162a20',fontWeight:700}}>
+      <span aria-hidden="true">{answerCopied?'✓':'⧉'}</span> {answerCopied?'Copiado!':'Copiar resposta'}
+     </button>
+    </>}
    <small>A IA não publica nem altera código nesta etapa. Logs e informações sensíveis não são exibidos na conversa.</small>
   </section>
   <section className="dc-plan">
@@ -122,7 +138,7 @@ export default function DevelopmentConsole(){
    <p>Peça uma mudança e eu consulto o arquivo real no GitHub para montar um plano. A edição e a publicação ainda exigem o executor e permissões adicionais.</p>
    <form onSubmit={planChange} className="dc-plan-form">
     <label htmlFor="dc-plan-file">Qual tela vamos melhorar?</label>
-    <select id="dc-plan-file" value={planningFile} onChange={e=>{setPlanningFile(e.target.value);setPlanningResult('');}}>
+    <select id="dc-plan-file" value={planningFile} onChange={e=>{setPlanningFile(e.target.value);setPlanningResult('');setCopyStatus('idle');}}>
      <option value="app/desenvolvimento/console.tsx">Central de Desenvolvimento</option>
      <option value="app/desenvolvimento/development.css">Visual da Central</option>
      <option value="app/producao/dashboard.tsx">Minha Produção</option>
@@ -132,7 +148,7 @@ export default function DevelopmentConsole(){
     <label htmlFor="dc-plan-goal">O que você quer mudar?</label>
     <textarea id="dc-plan-goal" rows={2} minLength={10} maxLength={650}
      placeholder="Ex.: Deixe os cartões da central mais simples no iPhone e mostre a falha mais importante primeiro."
-     value={planningGoal} onChange={e=>{setPlanningGoal(e.target.value);setPlanningResult('');}}/>
+     value={planningGoal} onChange={e=>{setPlanningGoal(e.target.value);setPlanningResult('');setCopyStatus('idle');}}/>
     <button disabled={planningBusy||planningGoal.trim().length<10} type="submit">
       {planningBusy?'Lendo código e planejando…':'Analisar código e planejar'}
     </button>
@@ -144,7 +160,8 @@ export default function DevelopmentConsole(){
       <span aria-hidden="true">{copyStatus==='copied'?'✓':'⧉'}</span>{copyStatus==='copied'?'Copiado!':'Copiar plano'}
      </button>
     </div>
-    <small>Versão do código: {planningSha.slice(0,12)}</small>
+    <small>Versão do código: {planningSha.slice(0,12)} · {planningPartial?'Fonte parcial, com trechos omitidos':'Fonte examinada por inteiro'}</small>
+     <small>{planningReferences?'A IA citou linhas presentes no código; as conclusões ainda precisam de revisão.':'A IA não apresentou referências válidas: o resultado não confirma erros.'}</small>
     {copyStatus==='error'&&<small role="alert">Não foi possível copiar automaticamente. Selecione o texto abaixo e copie manualmente.</small>}
     <p>{planningResult}</p>
    </div>}
