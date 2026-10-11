@@ -98,3 +98,49 @@ test('funções com mesmo nome aninhadas ficam identificadas pelo escopo e linha
  assert.equal(b.nodes.length,2);
  assert.notEqual(a.nodes.find(n=>n.name==='go')?.id,b.nodes.find(n=>n.name==='go')?.id);
 });
+
+test('parâmetro/variável com mesmo nome da importação impede ligação falsa',()=>{
+ const xs:GraphSource[]=[
+  {path:'lib/demo/use.ts',sha,content:[
+   "import {fetchOrder as run} from './api';",
+   "export function handler(run:()=>void){return run();}",
+   "export function shadow(){const run = ()=>0;return run();}",
+   "export function real(){return run();}"
+  ].join('\n')},
+  {path:'lib/demo/api.ts',sha,content:"export function fetchOrder(){return 7;}"}
+ ];
+ const graph=buildG2FunctionGraph(xs);
+ const real=traceG2Function(graph,'lib/demo/use.ts','real');
+ assert.ok(real.nodes.some(n=>n.name==='fetchOrder'));
+ const handler=traceG2Function(graph,'lib/demo/use.ts','handler');
+ assert.ok(!handler.nodes.some(n=>n.name==='fetchOrder'));
+ const shadow=traceG2Function(graph,'lib/demo/use.ts','shadow');
+ assert.ok(!shadow.nodes.some(n=>n.name==='fetchOrder'));
+ assert.ok(shadow.nodes.some(n=>n.name==='run'&&n.path==='lib/demo/use.ts'));
+});
+test('importações via namespace e imports default funcionam somente com export confirmado',()=>{
+ const xs:GraphSource[]=[
+  {path:'app/demo/entry.ts',sha,content:[
+   "import * as math from '@/lib/demo/math';",
+   "import defaultHandler from '@/lib/demo/default';",
+   "export function entry(){return math.compute()+defaultHandler();}"
+  ].join('\n')},
+  {path:'lib/demo/math.ts',sha,content:"export function compute(){return 12;}"},
+  {path:'lib/demo/default.ts',sha,content:"export default function defaultHandler(){return 8;}"}
+ ];
+ const graph=buildG2FunctionGraph(xs);
+ const trace=traceG2Function(graph,'app/demo/entry.ts','entry');
+ assert.ok(trace.nodes.some(n=>n.name==='compute'));
+ assert.ok(trace.nodes.some(n=>n.name==='defaultHandler'));
+});
+test('ciclo de função não causa laço infinito no rastreador',()=>{
+ const path='lib/demo/cycle.ts',content=[
+  "export function first(){return second();}",
+  "export function second(){return first();}"
+ ].join('\n');
+ const graph=buildG2FunctionGraph([{path,sha,content}]);
+ const trace=traceG2Function(graph,path,'first',5);
+ assert.equal(trace.status,'static_trace_only');
+ assert.equal(trace.nodes.length,2);
+ assert.ok(trace.edges.length>0&&trace.edges.length<=5);
+});
