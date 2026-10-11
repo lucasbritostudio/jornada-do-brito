@@ -95,3 +95,48 @@ test('V2 distingue riscos previstos de defeitos reais e não inventa porcentagen
  assert.equal(reviewLabResponse(JSON.stringify({...item,risks:['curto']}),e),null);
  assert.equal(reviewLabResponse(JSON.stringify({...item,risks:[item.risks[0],item.risks[0],item.risks[0],item.risks[0]]}),e),null);
 });
+
+
+test('regressão real: consulta ask deve incluir até o tratamento de r.ok',()=>{
+ const source=readFileSync('app/desenvolvimento/console.tsx','utf8');
+ const e=selectLabEvidence(safeSourceExcerpt(source,source.length+1000),
+  'Analise a função ask, se valida status e o indicador de carregamento.');
+ assert.match(e.excerpt,/async function ask\(/);
+ assert.match(e.excerpt,/if\(!r\.ok\)throw new Error/);
+ assert.match(e.excerpt,/finally\{setAsking\(false\);\}/);
+});
+test('regressão real: consulta refresh inclui sua definição com useCallback',()=>{
+ const source=readFileSync('app/desenvolvimento/console.tsx','utf8');
+ const e=selectLabEvidence(safeSourceExcerpt(source,source.length+1000),
+  'Analise a definição de refresh e seu useEffect.');
+ assert.match(e.excerpt,/const refresh=useCallback/);
+ assert.match(e.excerpt,/useEffect\(\(\)=>\{refresh\(\);\}/);
+});
+test('não transforma alegações de ausência em defeitos comprovados',()=>{
+ const code=[
+  'const refresh=useCallback(async()=>{},[]);',
+  'useEffect(()=>{refresh();},[refresh]);',
+  'async function ask(){',
+  " const r=await fetch('/api/desenvolvimento/chat');",
+  ' if(!r.ok)throw new Error("IA indisponível");',
+  '}',
+  'async function copyAnswer(){',
+  ' await navigator.clipboard.writeText("teste");',
+  '}'
+ ].join('\n');
+ const e=selectLabEvidence(code,'ask refresh copyAnswer',6000);
+ const base={uncertain:['não foi observado erro real'],risks:[],
+  suggestion:'Revisar caso necessário',test:'Testar resposta com HTTP 500'};
+ for(const finding of [
+  {line:4,quote:"const r=await fetch('/api/desenvolvimento/chat');",interpretation:'ask() envia POST sem validar status da resposta'},
+  {line:2,quote:'useEffect(()=>{refresh();},[refresh]);',interpretation:'refresh não aparece no trecho fornecido'},
+  {line:7,quote:'async function copyAnswer(){',interpretation:'copyAnswer usa clipboard sem checar disponibilidade'}
+ ]){
+  assert.equal(reviewLabResponse(JSON.stringify({...base,findings:[finding]}),e),null);
+ }
+ const valid={...base,findings:[{
+  line:5,quote:'if(!r.ok)throw new Error("IA indisponível");',
+  interpretation:'Existe um teste r.ok após o fetch.'
+ }]};
+ assert.equal(reviewLabResponse(JSON.stringify(valid),e)?.evidenceLevel,'checked_quotes');
+});
