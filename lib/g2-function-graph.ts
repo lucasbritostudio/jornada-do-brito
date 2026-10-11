@@ -10,7 +10,7 @@ import {validateSourcePath} from './devops-policy';
 export type GraphSource={path:string;sha:string;content:string};
 export type GraphSymbol={id:string;path:string;name:string;startLine:number;endLine:number;parent:string|null;exportName:string|null};
 export type GraphEdge={from:string;to:string;kind:'call'|'import';path:string;line:number;proof:'static_reference_only'};
-export type GraphGap={path:string;line:number;symbol:string;reason:'external_or_unprovided'|'not_exported'|'unresolved_call'|'ambiguous_binding'};
+export type GraphGap={path:string;line:number;symbol:string;reason:'external_or_unprovided'|'not_exported'|'unresolved_call'|'ambiguous_binding'|'http_route_unexamined'};
 export type FunctionGraph={
  status:'static_only';sha:string;files:string[];symbols:GraphSymbol[];
  edges:GraphEdge[];gaps:GraphGap[];
@@ -19,7 +19,7 @@ export type FunctionGraph={
 type ImportBinding={file:string;exportName:string;fromPath:string;line:number};
 type RawCall={owner:string;path:string;line:number;target:string;namespace?:string;shadowed:boolean};
 type FileInfo={file:ts.SourceFile;imports:Map<string,ImportBinding>;
- symbols:GraphSymbol[];exports:Map<string,string>;calls:RawCall[]};
+ symbols:GraphSymbol[];exports:Map<string,string>;calls:RawCall[];httpRoutes:{route:string;line:number}[]};
 
 const extensions=['','.ts','.tsx','.js','.jsx','.mjs','.css','/index.ts','/index.tsx'];
 function normalPath(p:string){
@@ -54,7 +54,7 @@ function parseOne(path:string,content:string,provided:Set<string>):FileInfo{
   isTsx?ts.ScriptKind.TSX:path.endsWith('.js')?ts.ScriptKind.JS:ts.ScriptKind.TS);
  const errors=(sf as ts.SourceFile&{parseDiagnostics?:readonly ts.Diagnostic[]}).parseDiagnostics||[];
  if(errors.length)throw new Error('G2_SOURCE_SYNTAX_INVALID');
- const info:FileInfo={file:sf,imports:new Map(),symbols:[],exports:new Map(),calls:[]};
+ const info:FileInfo={file:sf,imports:new Map(),symbols:[],exports:new Map(),calls:[],httpRoutes:[]};
  // Importações são provas de RELAÇÃO declarada, não de execução.
  for(const statement of sf.statements){
   if(!ts.isImportDeclaration(statement)||!ts.isStringLiteral(statement.moduleSpecifier))continue;
@@ -123,6 +123,13 @@ function parseOne(path:string,content:string,provided:Set<string>):FileInfo{
   }
   if(ts.isCallExpression(node)&&owner){
    const expr=node.expression,at=lineOf(sf,node);
+   // Uma chamada HTTP literal é apenas referência a rota: NUNCA concluir que
+   // o backend foi lido ou está correto sem a própria fonte permitida.
+   if(ts.isIdentifier(expr)&&expr.text==='fetch'&&node.arguments.length>0){
+    const url=node.arguments[0];
+    if(ts.isStringLiteral(url)&&/^\/api\/[a-zA-Z0-9_\/-]+$/.test(url.text))
+     info.httpRoutes.push({route:url.text,line:at});
+   }
    if(ts.isIdentifier(expr))info.calls.push({owner,path,line:at,target:expr.text,shadowed:shadowsImport(node,expr.text)});
    else if(ts.isPropertyAccessExpression(expr)&&ts.isIdentifier(expr.expression))
     info.calls.push({owner,path,line:at,target:expr.name.text,namespace:expr.expression.text,shadowed:shadowsImport(node,expr.expression.text)});
@@ -172,6 +179,8 @@ export function buildG2FunctionGraph(sources:readonly GraphSource[]):FunctionGra
  };
  // O grafo nunca adivinha definições de bibliotecas externas.
  for(const [path,info] of parsed){
+  for(const ref of info.httpRoutes)
+   gaps.push({path,line:ref.line,symbol:ref.route,reason:'http_route_unexamined'});
   for(const statement of info.file.statements){
    if(!ts.isImportDeclaration(statement)||!ts.isStringLiteral(statement.moduleSpecifier))continue;
    const spec=statement.moduleSpecifier.text;
@@ -233,6 +242,7 @@ export function buildG2FunctionGraph(sources:readonly GraphSource[]):FunctionGra
   limitations:[
    'Relações estáticas de importação e chamadas diretas; não comprovam execução em produção.',
    'Imports dinâmicos, dispatch por propriedades, event handlers e dependências ausentes podem não ser resolvidos.',
+   'Referência fetch(/api/...) marca uma fronteira HTTP: a rota e sua implementação NÃO foram lidas pelo grafo.',
    'Não se conclui que uma função ou tratamento inexiste quando a fonte está ausente.',
    'Cada arquivo deve ser fornecido explicitamente e referir o mesmo commit; nenhum download automático.'
   ]};
