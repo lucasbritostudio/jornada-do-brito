@@ -65,7 +65,14 @@ export function checkG2Claim(item:Pick<LukbrixCase,'sourceLine'|'quote'|'claim'>
     'A operação explícita na atribuição é '+arith[3]+'.',
     'Construir caso com operador alterado e garantir que a conclusão mude.');
  }
- const not=src.match(new RegExp('^\\s*(?:const|let|var)\\s+('+identifier+')\\s*=\\s*!\\s*('+identifier+')\\s*;?\\s*
+ const not=src.match(new RegExp('^\\s*(?:const|let|var)\\s+('+identifier+')\\s*=\\s*!\\s*('+identifier+')\\s*;?\\s*$'));
+ if(not&&new RegExp('\\b'+normalize(not[1])+'\\b').test(claim)&&
+    new RegExp('\\b'+normalize(not[2])+'\\b').test(claim)&&
+    /\b(?:negacao|inversao|operador\s+nao)\b/.test(claim))
+  return witness('supported','literal_operation',
+   not[1]+' recebe a negação lógica de '+not[2]+'.',
+   'Testar valores true e false em experimento sem dados reais.');
+ const length=src.match(new RegExp('^\\s*(?:const|let|var)\\s+('+identifier+')\\s*=\\s*('+identifier+')\\.length\\s*;?\\s*$'));
  if(length&&new RegExp('\\b'+normalize(length[1])+'\\b').test(claim)&&
     /\b(?:tamanho|comprimento|quantidade|numero\s+de)\b/.test(claim)&&
     new RegExp('\\b'+normalize(length[2])+'\\b').test(claim))
