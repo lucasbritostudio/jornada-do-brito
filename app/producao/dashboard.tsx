@@ -11,7 +11,7 @@ type WorkView={
   clock:Clock;urgency:'not_started'|'on_track'|'at_risk'|'overdue'|'sent_on_time'|'sent_late'|'finished'|'waiting_client'|'revisions';
   payment:{receivedCents:number;remainingCents:number|null;status:string};
 };
-type State={works:WorkView[];conflicts:{startOfWork:string;workIds:string[]}[];payments:{id:string;workId:string;amountCents:number;receivedAt:string}[];snapshotAt:string};
+type State={works:WorkView[];conflicts:{startOfWork:string;workIds:string[]}[];bookingConflicts:{date:string;workIds:string[]}[];payments:{id:string;workId:string;amountCents:number;receivedAt:string}[];snapshotAt:string};
 const LABEL:Record<Stage,string>={
   planned:'Planejamento',scheduled:'Gravação agendada',captured:'Gravado',
   editing:'Em edição',review:'Enviado para avaliação',changes_requested:'Cliente pediu ajustes',
@@ -166,6 +166,10 @@ export default function ProductionDashboard(){
    <article className={summary.urgent?'pr-metric-alert':''}><small>Precisam de atenção</small><strong>{summary.urgent}</strong><span>Sem envio até a meta de 48h</span></article>
    <article><small>Saldo de serviços cadastrados</small><strong>{money(summary.pendingCents)}</strong><span>{summary.pendingCount} trabalho(s) com saldo informado, não é caixa</span></article>
   </section>
+  {data.bookingConflicts?.length>0&&<section className="pr-warning">
+    <strong>Atenção à agenda antes de confirmar mais trabalho</strong>
+    <p>{data.bookingConflicts.length} data(s) têm duas ou mais gravações previstas. Confira deslocamento, duração e tempo restante para editar; isso é um aviso, não um bloqueio automático.</p>
+  </section>}
   {data.conflicts.length>0&&<section className="pr-warning">
     <strong>Possível sobrecarga na edição</strong>
     <p>{data.conflicts.length} data(s) com duas ou mais captações concluídas no mesmo dia. Verifique se consegue editar tudo antes das metas.</p>
