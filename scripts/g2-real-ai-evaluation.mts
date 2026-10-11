@@ -22,7 +22,7 @@ async function main(){
   throw new Error('G2_LIVE_PROJECT_ENV_MISMATCH');
  if(G2_LIVE_BLIND_V1.length!==MAX_CALLS)
   throw new Error('G2_LIVE_CASE_COUNT_MISMATCH');
- const model=process.env.G2_TEST_GROQ_MODEL||'openai/gpt-oss-20b';
+ const model='openai/gpt-oss-20b'; // Modelo fixo do piloto; sem escolhas de modelos pagos.
  // O piloto NUNCA consulta chaves, cofres ou quotas produtivas da Jornada.
  // Somente credencial dedicada ao ambiente de testes, fornecida localmente.
  if(process.env.G2_TEST_SANDBOX_ACK!=='isolated'){
