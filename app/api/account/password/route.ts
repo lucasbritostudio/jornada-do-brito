@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     if(request.headers.get('content-type')?.split(';')[0].trim()!=='application/json'){
       return NextResponse.json({error:'Formato inválido.'},{status:415});
     }
-    const body = await readLimitedJson(request.body,4096);
+    const body = await readLimitedJson(request.body,4096) as {password?:unknown}|null;
     const password = body?.password;
     if (typeof password !== 'string' || password.length < 8 || password.length > 1024) {
       return NextResponse.json({ error: 'Informe uma senha entre 8 e 1024 caracteres.' }, { status: 400 });
