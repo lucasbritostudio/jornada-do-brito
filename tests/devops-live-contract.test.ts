@@ -1,3 +1,5 @@
+import {readFileSync} from 'node:fs';
+import {resolve} from 'node:path';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {observeChefeBot,markAuthenticatedObservation,validateStoredObservation} from '../lib/devops-observer';
@@ -54,4 +56,16 @@ test('somente endpoints Web Push legítimos podem ser registrados',()=>{
   'file:///etc/passwd']){
   assert.equal(validSubscription(sub(input)),false);
  }
+});
+
+test('manifesto do app Dev não altera instalação original da Jornada',()=>{
+ const root=JSON.parse(readFileSync(resolve('public/manifest.webmanifest'),'utf8'));
+ const dev=JSON.parse(readFileSync(resolve('public/devops.webmanifest'),'utf8'));
+ assert.equal(root.start_url,'/');
+ assert.equal(root.short_name,'Jornada');
+ assert.equal(dev.start_url,'/desenvolvimento');
+ assert.equal(dev.display,'standalone');
+ assert.ok(dev.icons.some((x:{src:string})=>x.src==='/devops-icon.svg'));
+ const page=readFileSync(resolve('app/desenvolvimento/page.tsx'),'utf8');
+ assert.match(page,/manifest:'\/devops\.webmanifest'/);
 });

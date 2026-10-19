@@ -425,3 +425,9 @@ as restrições atuais e não poderá alterar seu próprio verificador/aprovador
 ### Testes contratuais adicionais — integração ChefeBot/Jornada
 - Testes impedem promover importação manual para autenticação, atribuir aprovação produtiva ao snapshot, falsificar origem, repetir a mesma observação para satisfazer limite e cadastrar endpoint SSRF no Web Push.
 - A tela diferencia total de snapshots importados da coleta **real autenticada**; o aviso e a notificação usam exclusivamente a contagem autenticada.
+
+
+### Isolamento de instalação iOS
+- O manifesto principal da Jornada permanece em `/manifest.webmanifest` com início na raiz `/`.
+- A IA Desenvolvedora usa **manifesto exclusivo** `/devops.webmanifest`, vinculado só à rota `/desenvolvimento` com ícone e nome "Jornada Dev". Não redireciona o aplicativo anterior para a central técnica.
+- O Service Worker preserva seu cache e comportamento existente; recebe somente os listeners adicionais de Web Push.
