@@ -21,7 +21,7 @@ export type EvidenceReadiness={
  latestObservedAt:number|null;
  isFresh:boolean;
  operationalEvidence:'INCONCLUSIVO';
- realConnectorConnected:false;
+ realConnectorConnected:boolean;
  alert:boolean;
  message:string;
 };
@@ -31,9 +31,10 @@ export function evaluateEvidenceReadiness(
 ):EvidenceReadiness{
  // Evidência NÃO autenticada não pode completar um gate operacional.
  // Esta contagem serve exclusivamente para chamar o desenvolvedor à revisão.
+ const authenticated=observations.some(x=>x.evidence.source.kind==='service_authenticated');
  const eligible=observations.map(x=>x.evidence)
   .filter(e=>e.projectId==='chefebot'&&e.environment==='production'
-   &&e.source.kind==='owner_import'&&e.verifiedCodeSha===null
+   &&(e.source.kind==='owner_import'||e.source.kind==='service_authenticated')&&e.verifiedCodeSha===null
    &&e.verification.outcome==='INCONCLUSIVO'
    &&typeof e.observedAt==='number'&&Number.isSafeInteger(e.observedAt)
    &&e.observedAt>=0&&e.observedAt<=now+60_000
@@ -61,10 +62,10 @@ export function evaluateEvidenceReadiness(
   latestObservedAt:last,
   isFresh:fresh,
   operationalEvidence:'INCONCLUSIVO',
-  realConnectorConnected:false,
+  realConnectorConnected:authenticated,
   alert:ready,
   message:ready
-   ?'Limite técnico de amostras importadas atingido. Pronto para revisão; ainda não há prova autenticada de produção.'
-   :'Aguardando leituras válidas e independentes. Importações não comprovam o funcionamento em produção.',
+   ?'Quantidade de amostras suficiente para revisão. Origem autenticada é indicada separadamente; correlação operacional ainda inconclusiva.'
+   :'Aguardando leituras válidas espaçadas. Amostras importadas e autenticadas são identificadas separadamente.',
  };
 }

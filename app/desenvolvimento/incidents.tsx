@@ -46,7 +46,16 @@ export default function IncidentEvidencePanel(){
    <button type="button" className="dc-refresh" onClick={refresh} disabled={busy}>{busy?'Consultando…':'Consultar histórico'}</button>
   </div>
   <p>Analise um snapshot agregado do monitor e preserve as evidências entre sessões. A importação é declarada pelo proprietário; a origem e o funcionamento em produção continuam inconclusivos.</p>
-  <p><strong>Conexão ao vivo: NÃO EXECUTADO.</strong> {result?.connection.reason||'Falta uma identidade exclusiva de leitura autorizada no ChefeBot.'}</p>
+  <p><strong>Conexão técnica:</strong> {result?.readiness.realConnectorConnected?'já há pelo menos uma observação autenticada':'ainda não há observação autenticada guardada'}. {result?.connection.reason||'Aguardando identidade de serviço exclusiva para o ChefeBot.'}</p>
+  <button type="button" className="dc-refresh" disabled={busy} onClick={async()=>{
+   setBusy(true);setError('');
+   try{
+    const r=await fetch('/api/desenvolvimento/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    const data=await r.json();if(!r.ok)throw new Error(data.error||'Falha na coleta autenticada.');
+    await load();
+   }catch(e){setError(e instanceof Error?e.message:'Falha na coleta.');}
+   finally{setBusy(false);}
+  }}>Sincronizar ChefeBot em leitura</button>
   {result&&!result.storageConfigured&&<p role="status">Histórico não conectado: falta o armazenamento privado da Jornada. Nenhum registro foi salvo.</p>}
   {result?.storageConfigured&&<div role={result.readiness.alert?'alert':'status'} aria-live="polite" className="dc-entry" style={{display:'block',marginBottom:14}}>
    <strong>{result.readiness.alert?'Amostras suficientes para revisão':'Coleta de evidências em andamento'}</strong>
@@ -67,7 +76,7 @@ export default function IncidentEvidencePanel(){
   {result?.observations.slice(0,10).map(record=><article key={record.evidence.id} className="dc-entry" style={{display:'block'}}>
    <strong>{record.analysisOutcome} · produção não aprovada</strong>
    <p>Observação: {record.evidence.observedAt?new Date(record.evidence.observedAt).toLocaleString('pt-BR'): 'Horário não informado'} · SHA {record.evidence.reportedCodeSha?.slice(0,12)||'ausente'} (não verificado).</p>
-   <small>Operação {record.evidence.operationId} · fonte: importação do proprietário</small>
+   <small>Operação {record.evidence.operationId} · fonte: {record.evidence.source.kind==='service_authenticated'?'monitor técnico autenticado':'importação manual não autenticada'}</small>
    {record.investigation?<>
     <p>Verificação do conteúdo importado:</p>
     <ul>{record.investigation.payloadChecks.map((check,i)=><li key={i}><strong>{check.component}: {check.outcome}</strong> — {check.reason}</li>)}</ul>

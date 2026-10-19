@@ -30,6 +30,7 @@ export async function GET(req:Request){
   return NextResponse.json({project,connection:pilotConnection(),storageConfigured:storage,
    observations,
    readiness:evaluateEvidenceReadiness(observations),
+   lastAuthenticatedAt:observations.find(x=>x.evidence.source.kind==='service_authenticated')?.evidence.observedAt??null,
    historyOutcome:storage?'COMPROVADO':'NÃO EXECUTADO',executed:false,
   },{headers});
  }catch(error){return failure(error);}

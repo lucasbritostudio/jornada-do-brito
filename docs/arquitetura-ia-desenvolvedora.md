@@ -401,3 +401,12 @@ as restrições atuais e não poderá alterar seu próprio verificador/aprovador
 - A conclusão operacional exige adaptador do ChefeBot autenticado em leitura, correlação entre job/canário/webhook, provas de funcionamento e gates específicos antes de qualquer edição, automação ou rollout. A ausência dessa conexão não pode ser encoberta por importações.
 - Testes unitários verificam limite, espaçamento, deduplicação, validade e idade; teste da rota confirma aviso sem mutação em GET. Nenhum teste com Blob real foi executado nessa etapa.
 - Critério de continuidade: validar este commit com CI, revisar mecanismo CAS em ambiente isolado antes de automatizar escritas concorrentes, publicar o módulo de coleta sem acesso extra à produção, e observar o aviso quando houver amostras suficientes.
+
+
+### Integração autenticada e coleta econômica — 19/10/2026
+- ChefeBot oferece um único GET `/api/dev/observability/jornada` com Bearer técnico dedicado, comparação em tempo constante e resposta allowlist de sinais agregados. Não herda cookie DEV, Evolution, Redis ou QStash.
+- Jornada consulta URL fixa pelo servidor, em produção, com timeout de 8s e limite de 32KiB; nunca aceita URLs vindas do usuário, snapshots ou LLM.
+- `service_authenticated` só é atribuído pelo fluxo de servidor após HTTP 2xx com segredo. Arquivos importados pelo proprietário continuam com `owner_import`. Os dois continuam **INCONCLUSIVOS** operacionalmente até correlação individual da outbox e webhook.
+- Um cron **diário UTC 12:00** reduz gastos e risco na Vercel Hobby. O botão de sincronização na Central permite leitura autenticada sob sessão proprietária sem enviar WhatsApp ou executar o worker. Sem polling constante ou QStash extra.
+- `CRON_SECRET` protege o cron, distinto da chave compartilhada com o ChefeBot. Ausência de qualquer credencial falha explicitamente sem marcar sucesso.
+- Alerta técnico de amostras só indica material suficiente para revisão (3 leituras válidas espaçadas). Não libera execução autônoma, deploy, Pix ou rollout.
