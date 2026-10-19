@@ -187,3 +187,206 @@ Fontes principais:
 - GitHub installation tokens: https://docs.github.com/en/rest/apps/apps
 - GitHub Actions REST: https://docs.github.com/en/rest/actions/workflow-runs
 - Vercel REST: https://vercel.com/docs/rest-api
+
+## 13. Evolução 3.0 — motor de evidências multiprojeto (19/10/2026)
+
+Esta seção atualiza o estado da implementação sem substituir a arquitetura
+acima. As datas e estados anteriores são registros históricos, não confirmação
+das integrações atuais. Base auditada da Jornada:
+`fd71fce54109d80175079e2d8e0f96d00bae8f36`.
+
+### Auditoria: o que existe e o que está conectado
+
+| Componente | Estado encontrado e preservado |
+|---|---|
+| `/desenvolvimento` + status/chat | Implementados, protegidos pela sessão owner. Diagnóstico GitHub/Vercel depende de credenciais próprias server-side; nenhuma disponível nesta sessão. |
+| Laboratório 2.2 / LUKBRIX G1 | Implementados e ligados à rota plan. Leitura de arquivos UI autorizados, SHA fixo, citações literais e verificador local; oportunidades de pesquisa são propostas. |
+| `devops-project-policy` | Contratos e funções puras testados; não constituem instalação GitHub, identidade remota nem concessão de acesso. |
+| GitHub App | Escopo do conector atual é somente Jornada. Não ampliar nem reutilizar instalação/chaves para ChefeBot. |
+| Executor, segundo fator, merge/deploy/rollback | Arquitetura/proteções planejadas. Nenhuma ferramenta de execução crítica foi habilitada por esta evolução. |
+| Memória conversacional | Blob privado existente, feedback humano; não é memória de incidentes verificados nem fonte da verdade operacional. Preservada. |
+| Supabase/Mastra/AI SDK descritos em documentos V1 | Não presentes nas dependências/runtime auditados. Não instalar frameworks para tornar o documento verdadeiro. |
+
+PROGRAMACAO.md e os documentos PROGRAMACAO/MAPA_DE_FONTES/ORQUESTRADOR/
+PROCESSO_OBRIGATORIO/AUDITORIA_DE_CODIGO/CHEFEBOT_* não foram encontrados nas
+árvores auditadas. Foram lidos os documentos oficiais versionados disponíveis,
+incluindo SEGURANCA_V1, IA_AGENTES_V1 e IA_MEMORIA_FEEDBACK_V1. Nenhuma regra
+ausente foi inventada. GitHub Actions existentes validam PR contra main; o
+workflow de publicação é separado e reage à main. Não foi modificado.
+
+### Componentes implementados nas fases A/B
+
+- **Registro de projetos:** `lib/devops-project-registry.ts` reutiliza a política
+  existente. Jornada é a central, ChefeBot é o único piloto. IDs desconhecidos,
+  troca de repositório e herança implícita de credenciais são recusados. Registro
+  não equivale a conexão nem permite adicionar outros projetos por prompt.
+- **Observador:** `lib/devops-observer.ts` transforma apenas campos permitidos
+  do monitor em evidência estruturada: ID por digest, operação, projeto,
+  ambiente, SHA declarado separado de SHA verificado, horário, origem, estado
+  e qualidade de cada sinal. `missing`, `invalid`, `unavailable` e zero válido
+  permanecem distintos. Conteúdo livre, telefone, jobId, cookies, comandos,
+  gates e aprovações enviados no JSON não são copiados para o histórico.
+- **Investigador e verificador:** `lib/devops-investigator.ts` verifica os sinais
+  deterministicamente e propõe hipóteses/próxima verificação. A LLM não fornece
+  evidências nem decide aprovação. `COMPROVADO`/`FALHOU` nos checks descrevem o
+  conteúdo do snapshot; o resultado operacional de uma importação permanece
+  `INCONCLUSIVO`. Teste proposto é `NÃO EXECUTADO`. Não confundir a verificação
+  de tipos/estados com um verificador semântico universal ou um teste em produção.
+- **Planejador limitado:** `lib/devops-attempts.ts` e o journal persistente
+  impedem nova análise sem mudança no contexto, reaproveitam resultado válido
+  do mesmo contexto, aplicam cooldown de 15 min, máximo de 3 análises por
+  hipótese e 12 por incidente. O contexto contém projeto, ambiente, SHA
+  declarado e sinais; atualizar somente checkedAt não justifica repetir.
+  São limites internos conservadores, não limites de Evolution ou provedores.
+- **Memória técnica inicial:** `lib/devops-incidents.ts` usa o Blob privado
+  existente e o helper CAS `blob-conflict`, no namespace exclusivo
+  `jornada/devops-v3/chefebot/observations.json`. Não toca state.json, produção,
+  financeiro ou memória conversacional. IDs deduplicam imports; ETag/CAS
+  preserva concorrência. Até 3 tentativas de persistência em conflito, nunca
+  retry de mensagens/provedores. Erro de leitura não vira histórico vazio.
+  Limite explícito de 128 observações / 1 MiB: rejeitar novas entradas ao atingir
+  o limite, sem descartar evidências antigas. Arquivamento ainda exige revisão.
+- **API e interface:** `/api/desenvolvimento/incidents` e painel dentro da Central
+  existente. GET autenticado somente lê; POST autenticado e same-origin importa
+  JSON limitado a 32 KiB medidos no stream. A única escrita é a memória DevOps
+  da Jornada. Nenhuma chamada a LLM ou rede do piloto é feita pelo novo motor.
+
+### Contrato e cadeia de evidências
+
+`canário → outbox → Redis/Lua → worker QStash → Evolution → webhook → confirmação → métricas → gates`.
+
+O adaptador observa os estados agregados que o monitor realmente oferece. Não
+fabrica correlação individual por job, SHA de deployment, HTTP de envio ou prova
+de entrega no aparelho quando a fonte não os oferece. Toda importação tem
+`source.kind=owner_import`, `verifiedCodeSha=null`, `correlation.job=unavailable`
+e verificação operacional inconclusiva, mesmo com HTTP/READY/roundtrip positivos
+declarados. Hash detecta alteração do conteúdo canônico; não autentica a origem.
+Um futuro coletor autenticado exige contrato próprio e revisão de permissões.
+
+### Piloto ChefeBot e evidências reutilizadas
+
+Main conferida por Git em `b2d789b6b4830b156d5d1f7233e07b2379544937`, merge #504,
+incluindo `c28b9906a9418a0288e7ab2ae3b2afbae9b40fa1`. Revisados código e descrição
+pública do PR #504: preservação das leituras válidas da fila e distinção entre
+contador ausente, erro de leitura e canário/job sem correlação. Esses bugs não
+foram reabertos, nem foram repetidos os testes do ChefeBot.
+
+O PR relata CI com 6.690 testes aprovados/6 ignorados, 3 integrações Redis
+descartável/Evolution falsa, deployment READY e etapa 1 ainda pendente de novo
+canário autenticado. Isso é evidência histórica atribuída ao PR, não execução
+desses testes ou leitura da produção pela central nesta sessão.
+
+**Bloqueio real da fase C ao vivo:** o monitor do ChefeBot aceita apenas cookie
+auth-token com role DEV. Não há contrato de serviço com token restrito à
+leitura. A Jornada não deve guardar sessão DEV ampla, secret de assinatura do
+ChefeBot ou credenciais de Redis/Evolution para contornar isso. Falta identidade
+de serviço explicitamente autorizada no piloto, com leitura somente dos campos
+necessários e verificação da origem/tempo/SHA. Nenhuma alteração no ChefeBot foi
+feita neste PR. Acesso Git desta sessão não concede esse acesso ao aplicativo.
+
+### Modelos, custos e segurança
+
+O novo motor é determinístico: 0 chamadas e 0 custo de LLM por análise; não é
+estimativa de economia nem preço total da infraestrutura. Reutiliza os modelos
+substituíveis da Jornada para o laboratório existente, sem nova dependência.
+GET do journal realiza uma leitura Blob; import novo faz leitura + uma escrita
+em sucesso normal, com leituras adicionais limitadas em conflito. Import
+duplicado não regrava. Não há polling, cron, serviço contratado ou Preview.
+Custos reais do Blob e quotas da conta não foram consultados.
+
+Nenhuma recuperação automática de produção está habilitada. Playbooks, circuit
+breaker distribuído de conectores externos, runner de patch, autenticação forte,
+aprovações criptográficas, resolução operacional e recuperação de lições
+comprovadas pertencem às fases seguintes. Não converter feedback/modelo/import
+em causa raiz verificada nem em regra permanente. O executor futuro deve manter
+as restrições atuais e não poderá alterar seu próprio verificador/aprovador.
+
+### Critérios das próximas fases
+
+| Fase | Estado e condição de saída |
+|---|---|
+| A — base verificável | Código/documentação/contratos implementados; revisão e publicação pendentes. |
+| B — motor de evidências | Adaptador, diagnóstico determinístico, memória CAS, limites e UI implementados. Validar testes/HTTP isolados no checkpoint abaixo. |
+| C — piloto | Análise importada utilizável, sem prova operacional. Conexão ao vivo bloqueada pela identidade de leitura e correlação ausentes. |
+| D — correção assistida | Laboratório atual preservado; runner e aprovação forte ainda não implementados. Exigir SHA/diff fixos, ambiente isolado, testes e revisão independente. |
+| E — autocorreção | Não habilitada. Exigir playbooks previamente aprovados, idempotência, reversibilidade, limites, pós-verificação e rollback. |
+
+### ESTADO ATUAL E CONTINUIDADE — IA DESENVOLVEDORA 3.0
+
+- **Objetivo/fase:** central multiprojeto, fases A/B e interface de importação C.
+- **Repositório/branch:** lucasbritostudio/jornada-do-brito,
+  `feat/devops-evidence-v3-chefebot`. ChefeBot permanece sem alterações.
+- **SHA base:** `fd71fce54109d80175079e2d8e0f96d00bae8f36`.
+- **Commit de implementação validado:**
+  `386780c22a95d80063340eaf3bddd8017c457c34`. O commit seguinte altera apenas este
+  checkpoint; obter seu SHA exato com `git log -1 --format=%H -- docs/arquitetura-ia-desenvolvedora.md`.
+- **Arquivos:** master atual; console existente (+painel); incidents.tsx;
+  API incidents; devops-project-registry, observer, investigator, attempts,
+  incidents, json; testes observability/incidents-api/fixtures; package.json.
+- **Concluído:** registro/contrato/diagnóstico importado, isolamento, journal CAS,
+  dedupe/cooldown/orçamento e UI integrada; sem executor crítico.
+- **Validação final:** baseline main 135/135 e TypeScript; regressão final
+  **161/161**, zero falhas/ignorados; **26/26** testes novos focados. TypeScript
+  estrito e build Next 16.4.2 passaram. **11/11** verificações HTTP contra a
+  aplicação compilada localmente: sessão sintética, 401/403, no-store,
+  isolamento do projeto, falta de armazenamento explícita (503) e renderização
+  do painel. O Next local usa localhost como origem canônica; request por alias
+  127.0.0.1 com Origin diferente foi corretamente recusado, depois o smoke foi
+  executado pela origem canônica. Não houve relaxamento do CSRF.
+- **Limites dos testes:** concorrência/idempotência/ETag do Blob foram exercitados
+  com provedor simulado em memória, incluindo 100 imports iguais → 1 gravação,
+  duas observações concorrentes preservadas e histórico cheio sem perda.
+  Não validam latência/quota/consistência da conta Blob real, navegador interativo,
+  autenticação do piloto, Evolution/Meta, QStash ou tráfego de produção. Não há
+  script de lint no projeto; não foi acrescentado framework para simular lint.
+- **Revisão adversarial:** projeção sem conteúdo livre; origem/SHA declarados
+  não viram prova; gates ignorados no import; namespace separado; autenticação/
+  CSRF e políticas atuais preservados; CAS limitado sem side effects externos;
+  falhas não inicializam memória vazia. Corrigidos estados reais do canário e
+  ordenação de timestamps no CAS durante a validação. Alterações automáticas
+  de tsconfig/next-env feitas pelo build foram revertidas ao conteúdo original.
+- **Evidências reais:** leitura Git de ambas as mains e páginas públicas #12/#504;
+  execução isolada da suíte; não houve leitura autenticada do monitor remoto.
+- **Pendências:** publicação do PR e revisão dos novos componentes; conexão C
+  ao vivo, memória de resolução verificada e execução D/E não prontas.
+- **Bloqueios externos:** identidade de serviço de leitura no ChefeBot e acesso
+  autenticado do aplicativo; API GitHub da sessão confirmou Forbidden ao ler o
+  repositório e ao tentar criar o PR Draft (`api.github.com/graphql`). Git HTTPS
+  de leitura funciona. Branch mantida localmente; não foi feito push, pois não
+  foi possível verificar a configuração remota de Previews para este projeto.
+  Não modificar proteções, provocar publicação incidental ou publicar main.
+- **Artefato de revisão:** patch consolidado relativo à base, gerado no workspace
+  em `/workspace/artifacts/jornada-devops-v3.patch`, com os dois commits. Não é
+  prova de CI remoto nem de publicação. Não existem credenciais no delta revisto;
+  varredura de assinaturas conhecidas retornou zero, além da inspeção do conteúdo.
+- **Próxima ação exata:** quando o acesso oficial à API estiver disponível,
+  abrir PR do commit validado contra main e executar o CI existente, sem merge/
+  deploy. Antes de conectar o monitor, definir em PR separado no ChefeBot a
+  identidade de serviço de leitura e a correlação mínima; obter autorização de
+  configuração. Não solicitar cookies DEV nem chaves de Redis/Evolution no chat.
+- **Restrições:** nenhum merge/deploy, Preview, WhatsApp, Pix, pedido, rollout,
+  segredo de produção, integração automática com outros projetos ou chamada LLM.
+
+### Correção de isolamento e primeira gravação — 19/10/2026 (retomada)
+
+- **Falha reproduzida pela revisão:** o orçamento de três análises compartilhava
+  todas as ocorrências de canário em um mesmo ambiente. Depois de esgotar um
+  canário, um novo incidente poderia ser impedido de receber análise.
+- **Patch:** a chave de incidente deriva de projeto, ambiente e instante
+  `canaryAt` observado. Alterações de `checkedAt`, SHA declarado ou contadores
+  não recriam o orçamento. Canário sem horário conhecido recebe escopo conservador
+  próprio. Entradas antigas (journal v1) são classificadas pela mesma função,
+  sem reescrita nem migração destrutiva.
+- **Blob privado:** quando a primeira gravação retorna erro genérico, uma leitura
+  nova distingue registro criado por outra instância de falha sem persistência.
+  Não há retry de Evolution, Pix, pedidos nem outras operações externas.
+- **Validações acrescentadas:** canário A esgota orçamento, canário B continua;
+  legado preservado; resposta genérica perdida após criação não duplica Blob.
+  Repositório e testes oficiais precisam confirmar a revisão completa no SHA
+  publicado no PR. Sem teste produtivo de concorrência nesta fase.
+- **Continuidade:** branch `feat/devops-evidence-v3-chefebot-resume-20261019`;
+  usar apenas commit e resultados realmente verificados no GitHub. Não há
+  identidade de leitura instalada no ChefeBot, portanto evidência operacional
+  permanece INCONCLUSIVA. Executor de patch, deploy e autocorreção produtiva
+  continuam desligados. Próxima fase: revisão de segurança, conexão exclusiva
+  de leitura e prova de concorrência entre instâncias autorizadas.

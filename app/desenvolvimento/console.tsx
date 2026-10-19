@@ -1,5 +1,6 @@
 'use client';
 import {useCallback,useEffect,useState} from 'react';
+import IncidentEvidencePanel from './incidents';
 
 type WorkflowRun={name:string;state:string;result:string|null;sha:string;url:string};
 type Deployment={id:string;state:string;environment:string;url:string|null;createdAt:string|null};
@@ -175,6 +176,7 @@ export default function DevelopmentConsole(){
    </div>}
    <small>Acesso de leitura. Nenhum arquivo é modificado por este formulário.</small>
   </section>
+  <IncidentEvidencePanel />
   {error&&<p className="dc-error" role="alert">{error}</p>}
   {!data?<div className="dc-loading">Conferindo conexões…</div>:<>
    <div className="dc-overview">
