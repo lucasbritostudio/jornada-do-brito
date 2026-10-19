@@ -18,10 +18,12 @@ export default function InstallDevopsApp(){
   try{
    if(!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window))
     throw new Error('No iPhone, abra a Jornada instalada pela Tela de Início para permitir notificações.');
-   const config=await fetch('/api/desenvolvimento/push',{cache:'no-store'}).then(r=>r.json());
-   if(!config.publicKey)throw new Error('Notificações não configuradas neste ambiente.');
+   // No Safari/iOS o pedido precisa ocorrer no gesto do usuário,
+   // antes de qualquer espera assíncrona por HTTP.
    const permission=await Notification.requestPermission();
    if(permission!=='granted')throw new Error('Notificações não autorizadas pelo iPhone.');
+   const config=await fetch('/api/desenvolvimento/push',{cache:'no-store'}).then(r=>r.json());
+   if(!config.publicKey)throw new Error('Notificações não configuradas neste ambiente.');
    const registration=await navigator.serviceWorker.register('/sw.js');
    await navigator.serviceWorker.ready;
    const existing=await registration.pushManager.getSubscription();
