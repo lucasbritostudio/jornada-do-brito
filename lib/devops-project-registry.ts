@@ -26,11 +26,12 @@ export function observationProject(id:unknown){
 }
 
 export function pilotConnection(){
+ const configured=Boolean(process.env.JORNADA_CHEFEBOT_MONITOR_TOKEN?.length && process.env.JORNADA_CHEFEBOT_MONITOR_TOKEN.length>=32);
  return {
-  project:observationProject('chefebot'),outcome:'NÃO EXECUTADO' as const,
-  connected:false,
-  reason:'O monitor exige sessão DEV. Falta uma identidade de serviço exclusiva de leitura, autorizada no ChefeBot; a sessão da Jornada e sua GitHub App não concedem esse acesso.',
-  requiredSource:'https://chefedapizza.com.br/api/dev/whatsapp/monitoramento',
+  project:observationProject('chefebot'),outcome:'INCONCLUSIVO' as const,
+  connected:false,configured,
+  reason:configured?'Credenciais de leitura configuradas. O sucesso depende de uma coleta remota autenticada.':'A identidade exclusiva de leitura do ChefeBot ainda não está configurada.',
+  requiredSource:'https://chefedapizza.com.br/api/dev/observability/jornada',
   productionWrites:false,
  };
 }

@@ -15,11 +15,11 @@ export type Observation={
  repository:'luk8nhassil-maker/-chefebot';environment:'production'|'preview'|'isolated';
  reportedCodeSha:string|null;verifiedCodeSha:null;
  observedAt:number|null;receivedAt:number;
- source:{kind:'owner_import';reference:'/api/dev/whatsapp/monitoramento'};
+ source:{kind:'owner_import'|'service_authenticated';reference:string};
  correlation:{job:'unavailable';worker:'aggregate_only'};
  signals:Record<SignalName,EvidenceSignal>;
  contextDigest:string;
- verification:{outcome:'INCONCLUSIVO';reason:'source_not_authenticated';verifier:'deterministic-v3.1'};
+ verification:{outcome:'INCONCLUSIVO';reason:'source_not_authenticated'|'aggregate_not_correlated';verifier:'deterministic-v3.1'};
 };
 type ObjectValue=Record<string,unknown>;
 function object(value:unknown):ObjectValue{
@@ -93,6 +93,17 @@ export function observeChefeBot(input:unknown,metadata:{
  };
 }
 
+/** A identidade do monitor foi comprovada no servidor pela credencial técnica.
+ * Ainda é uma leitura agregada: não declara canário ou entrega comprovados.
+ * Proíbe que snapshot importado manualmente adquira esta origem.
+ */
+export function markAuthenticatedObservation(input:Observation):Observation{
+ const source={kind:'service_authenticated' as const,reference:'/api/dev/observability/jornada'};
+ const id=evidenceDigest({contextDigest:input.contextDigest,observedAt:input.observedAt,source:source.kind});
+ return {...input,id,operationId:'observation_'+id.slice(0,24),source,
+  verification:{outcome:'INCONCLUSIVO',reason:'aggregate_not_correlated',verifier:'deterministic-v3.1'}};
+}
+
 /** Reconstrói também os registros lidos do Blob. Não devolver objetos brutos. */
 export function validateStoredObservation(input:unknown):Observation{
  const value=object(input),s=object(value.signals);
@@ -106,9 +117,11 @@ export function validateStoredObservation(input:unknown):Observation{
  };
  // As qualidades missing/invalid/unavailable não podem ser recuperadas apenas
  // a partir de null. Valide cada sinal contra seu domínio, depois preserve-as.
- const restored=observeChefeBot(snapshot,{
+ const sourceKind=object(value.source).kind;
+ const rebuilt=observeChefeBot(snapshot,{
   projectId:value.projectId,environment:value.environment,reportedCodeSha:value.reportedCodeSha,
  },typeof value.receivedAt==='number'?value.receivedAt:0);
+ const restored=sourceKind==='service_authenticated'?markAuthenticatedObservation(rebuilt):rebuilt;
  for(const key of SIGNALS){
   const signal=object(s[key]);
   if(!['valid','missing','invalid','unavailable'].includes(String(signal.quality))||
@@ -118,10 +131,13 @@ export function validateStoredObservation(input:unknown):Observation{
  }
  restored.contextDigest=evidenceDigest({projectId:'chefebot',environment:restored.environment,
   reportedCodeSha:restored.reportedCodeSha,signals:restored.signals});
- restored.id=evidenceDigest({contextDigest:restored.contextDigest,observedAt:restored.observedAt});
+ restored.id=evidenceDigest(sourceKind==='service_authenticated'
+  ?{contextDigest:restored.contextDigest,observedAt:restored.observedAt,source:sourceKind}
+  :{contextDigest:restored.contextDigest,observedAt:restored.observedAt});
  restored.operationId='observation_'+restored.id.slice(0,24);
  if(value.version!==1||value.id!==restored.id||value.contextDigest!==restored.contextDigest||
-  value.verifiedCodeSha!==null||object(value.source).kind!=='owner_import'||
+  value.verifiedCodeSha!==null||!['owner_import','service_authenticated'].includes(String(sourceKind))||
+  object(value.verification).reason!==restored.verification.reason||
   value.repository!==restored.repository||!Number.isSafeInteger(value.receivedAt)||
   Number(value.receivedAt)<0)throw new Error('DEVOPS_STORE_INVALID');
  return restored;

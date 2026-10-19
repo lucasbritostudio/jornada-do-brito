@@ -5,7 +5,7 @@ import type {Observation} from '@/lib/devops-observer';
 import type {Investigation} from '@/lib/devops-investigator';
 
 type RecordView={evidence:Observation;investigation:Investigation|null;analysisOutcome:string;decision:string};
-type Result={storageConfigured:boolean;connection:{reason:string};observations:RecordView[];readiness:EvidenceReadiness};
+type Result={storageConfigured:boolean;connection:{reason:string};observations:RecordView[];readiness:EvidenceReadiness;authenticatedReadiness:EvidenceReadiness};
 export default function IncidentEvidencePanel(){
  const [result,setResult]=useState<Result|null>(null);
  const [snapshot,setSnapshot]=useState('');
@@ -46,13 +46,22 @@ export default function IncidentEvidencePanel(){
    <button type="button" className="dc-refresh" onClick={refresh} disabled={busy}>{busy?'Consultando…':'Consultar histórico'}</button>
   </div>
   <p>Analise um snapshot agregado do monitor e preserve as evidências entre sessões. A importação é declarada pelo proprietário; a origem e o funcionamento em produção continuam inconclusivos.</p>
-  <p><strong>Conexão ao vivo: NÃO EXECUTADO.</strong> {result?.connection.reason||'Falta uma identidade exclusiva de leitura autorizada no ChefeBot.'}</p>
+  <p><strong>Conexão técnica:</strong> {result?.readiness.realConnectorConnected?'já há pelo menos uma observação autenticada':'ainda não há observação autenticada guardada'}. {result?.connection.reason||'Aguardando identidade de serviço exclusiva para o ChefeBot.'}</p>
+  <button type="button" className="dc-refresh" disabled={busy} onClick={async()=>{
+   setBusy(true);setError('');
+   try{
+    const r=await fetch('/api/desenvolvimento/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    const data=await r.json();if(!r.ok)throw new Error(data.error||'Falha na coleta autenticada.');
+    await load();
+   }catch(e){setError(e instanceof Error?e.message:'Falha na coleta.');}
+   finally{setBusy(false);}
+  }}>Sincronizar ChefeBot em leitura</button>
   {result&&!result.storageConfigured&&<p role="status">Histórico não conectado: falta o armazenamento privado da Jornada. Nenhum registro foi salvo.</p>}
-  {result?.storageConfigured&&<div role={result.readiness.alert?'alert':'status'} aria-live="polite" className="dc-entry" style={{display:'block',marginBottom:14}}>
-   <strong>{result.readiness.alert?'Amostras suficientes para revisão':'Coleta de evidências em andamento'}</strong>
-   <p>{Math.min(result.readiness.observedSamples,result.readiness.requiredSamples)} de {result.readiness.requiredSamples} leituras válidas e independentes (intervalo mínimo de 5 minutos). Janela registrada: {Math.floor(result.readiness.observedSpanMs/60000)} minutos; mínimo: {Math.floor(result.readiness.requiredSpanMs/60000)}.</p>
-   <p>{result.readiness.message}</p>
-   {result.readiness.alert&&<p><strong>Aviso técnico:</strong> {result.readiness.isFresh?'a última amostra está recente.':'a última amostra está antiga.'} A etapa operacional continua INCONCLUSIVA até existir leitura autenticada e correlação real no ChefeBot.</p>}
+  {result?.storageConfigured&&<div role={result.authenticatedReadiness.alert?'alert':'status'} aria-live="polite" className="dc-entry" style={{display:'block',marginBottom:14}}>
+   <strong>{result.authenticatedReadiness.alert?'Dados autenticados suficientes para revisão':'Coleta autenticada em andamento'}</strong>
+   <p>{Math.min(result.authenticatedReadiness.observedSamples,result.authenticatedReadiness.requiredSamples)} de {result.authenticatedReadiness.requiredSamples} leituras autenticadas e independentes (intervalo mínimo de 5 minutos). Janela registrada: {Math.floor(result.authenticatedReadiness.observedSpanMs/60000)} minutos; mínimo: {Math.floor(result.authenticatedReadiness.requiredSpanMs/60000)}.</p>
+   <p>As importações manuais ({result.readiness.observedSamples} leituras elegíveis no histórico) são mantidas para comparação, mas não contam neste limite autenticado.</p>
+   {result.authenticatedReadiness.alert&&<p><strong>Aviso técnico:</strong> {result.authenticatedReadiness.isFresh?'a última amostra está recente.':'a última amostra está antiga.'} A análise operacional ainda é INCONCLUSIVA até provar a correlação do canário com a fila e o webhook.</p>}
   </div>}
   <form onSubmit={record} className="dc-plan-form">
    <label htmlFor="incident-sha">SHA declarado da versão observada (opcional)</label>
@@ -67,7 +76,7 @@ export default function IncidentEvidencePanel(){
   {result?.observations.slice(0,10).map(record=><article key={record.evidence.id} className="dc-entry" style={{display:'block'}}>
    <strong>{record.analysisOutcome} · produção não aprovada</strong>
    <p>Observação: {record.evidence.observedAt?new Date(record.evidence.observedAt).toLocaleString('pt-BR'): 'Horário não informado'} · SHA {record.evidence.reportedCodeSha?.slice(0,12)||'ausente'} (não verificado).</p>
-   <small>Operação {record.evidence.operationId} · fonte: importação do proprietário</small>
+   <small>Operação {record.evidence.operationId} · fonte: {record.evidence.source.kind==='service_authenticated'?'monitor técnico autenticado':'importação manual não autenticada'}</small>
    {record.investigation?<>
     <p>Verificação do conteúdo importado:</p>
     <ul>{record.investigation.payloadChecks.map((check,i)=><li key={i}><strong>{check.component}: {check.outcome}</strong> — {check.reason}</li>)}</ul>

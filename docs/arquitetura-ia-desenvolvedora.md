@@ -401,3 +401,27 @@ as restrições atuais e não poderá alterar seu próprio verificador/aprovador
 - A conclusão operacional exige adaptador do ChefeBot autenticado em leitura, correlação entre job/canário/webhook, provas de funcionamento e gates específicos antes de qualquer edição, automação ou rollout. A ausência dessa conexão não pode ser encoberta por importações.
 - Testes unitários verificam limite, espaçamento, deduplicação, validade e idade; teste da rota confirma aviso sem mutação em GET. Nenhum teste com Blob real foi executado nessa etapa.
 - Critério de continuidade: validar este commit com CI, revisar mecanismo CAS em ambiente isolado antes de automatizar escritas concorrentes, publicar o módulo de coleta sem acesso extra à produção, e observar o aviso quando houver amostras suficientes.
+
+
+### Integração autenticada e coleta econômica — 19/10/2026
+- ChefeBot oferece um único GET `/api/dev/observability/jornada` com Bearer técnico dedicado, comparação em tempo constante e resposta allowlist de sinais agregados. Não herda cookie DEV, Evolution, Redis ou QStash.
+- Jornada consulta URL fixa pelo servidor, em produção, com timeout de 8s e limite de 32KiB; nunca aceita URLs vindas do usuário, snapshots ou LLM.
+- `service_authenticated` só é atribuído pelo fluxo de servidor após HTTP 2xx com segredo. Arquivos importados pelo proprietário continuam com `owner_import`. Os dois continuam **INCONCLUSIVOS** operacionalmente até correlação individual da outbox e webhook.
+- Um cron **diário UTC 12:00** reduz gastos e risco na Vercel Hobby. O botão de sincronização na Central permite leitura autenticada sob sessão proprietária sem enviar WhatsApp ou executar o worker. Sem polling constante ou QStash extra.
+- `CRON_SECRET` protege o cron, distinto da chave compartilhada com o ChefeBot. Ausência de qualquer credencial falha explicitamente sem marcar sucesso.
+- Alerta técnico de amostras só indica material suficiente para revisão (3 leituras válidas espaçadas). Não libera execução autônoma, deploy, Pix ou rollout.
+
+
+### iOS: instalação PWA e alertas Web Push (19/10/2026)
+- Reutiliza `public/sw.js` existente, manifest instalável `/desenvolvimento`, ícone SVG próprio e metadados de PWA em vez de criar um app nativo fora da Jornada.
+- iPhone iOS 16.4+: **Adicionar à Tela de Início** no Safari; abertura pelo ícone e toque explícito em **Ativar notificações** são exigências do iOS. Não podem ser executadas pelo servidor nem pelo Codex.
+- `/api/desenvolvimento/push`: registra/remover assinaturas somente após sessão de proprietário e checagem de origem. Os endpoints são filtrados por provedores Web Push conhecidos para evitar SSRF; armazenamento separado em Blob privado. Não envia dados de clientes.
+- O alerta é disparado após coleta bem-sucedida quando a contagem passa pela primeira vez a 3 observações independentes. Teto de vinte assinaturas por mensagem e apenas texto genérico; falha de push não modifica a coleta.
+- Segredos `VAPID_PUBLIC_KEY` e `VAPID_PRIVATE_KEY` devem existir só na Vercel. Chaves jamais são enviadas a navegador, com exceção da pública.
+- A coleta automática no plano Hobby é **diária**. Não prometer monitoramento a cada minuto nem notificação imediata sem infraestrutura de frequência autorizada.
+- Não há agente executor que faça mudanças produtivas autônomas. Só coleta, análise determinística e alertas; a futura fase de correção controlada exige aprovações de execução por capacidade e commit.
+
+
+### Testes contratuais adicionais — integração ChefeBot/Jornada
+- Testes impedem promover importação manual para autenticação, atribuir aprovação produtiva ao snapshot, falsificar origem, repetir a mesma observação para satisfazer limite e cadastrar endpoint SSRF no Web Push.
+- A tela diferencia total de snapshots importados da coleta **real autenticada**; o aviso e a notificação usam exclusivamente a contagem autenticada.

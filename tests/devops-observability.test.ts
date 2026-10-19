@@ -19,7 +19,7 @@ test('registro não herda credenciais nem aceita outro projeto ou protótipo',()
   assert.throws(()=>observationProject(id),/PROJECT_DENIED/);
  assert.throws(()=>observeChefeBot(monitorFixture(),{projectId:'jornada',environment:'production'}),/ADAPTER_DENIED/);
  assert.equal(pilotConnection().connected,false);
- assert.equal(pilotConnection().outcome,'NÃO EXECUTADO');
+ assert.equal(pilotConnection().outcome,'INCONCLUSIVO');
 });
 test('evidência canônica preserva contador ausente e código apenas declarado',()=>{
  const e=observe();
