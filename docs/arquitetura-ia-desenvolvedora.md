@@ -420,3 +420,8 @@ as restrições atuais e não poderá alterar seu próprio verificador/aprovador
 - Segredos `VAPID_PUBLIC_KEY` e `VAPID_PRIVATE_KEY` devem existir só na Vercel. Chaves jamais são enviadas a navegador, com exceção da pública.
 - A coleta automática no plano Hobby é **diária**. Não prometer monitoramento a cada minuto nem notificação imediata sem infraestrutura de frequência autorizada.
 - Não há agente executor que faça mudanças produtivas autônomas. Só coleta, análise determinística e alertas; a futura fase de correção controlada exige aprovações de execução por capacidade e commit.
+
+
+### Testes contratuais adicionais — integração ChefeBot/Jornada
+- Testes impedem promover importação manual para autenticação, atribuir aprovação produtiva ao snapshot, falsificar origem, repetir a mesma observação para satisfazer limite e cadastrar endpoint SSRF no Web Push.
+- A tela diferencia total de snapshots importados da coleta **real autenticada**; o aviso e a notificação usam exclusivamente a contagem autenticada.

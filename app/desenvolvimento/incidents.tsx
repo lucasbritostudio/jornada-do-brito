@@ -5,7 +5,7 @@ import type {Observation} from '@/lib/devops-observer';
 import type {Investigation} from '@/lib/devops-investigator';
 
 type RecordView={evidence:Observation;investigation:Investigation|null;analysisOutcome:string;decision:string};
-type Result={storageConfigured:boolean;connection:{reason:string};observations:RecordView[];readiness:EvidenceReadiness};
+type Result={storageConfigured:boolean;connection:{reason:string};observations:RecordView[];readiness:EvidenceReadiness;authenticatedReadiness:EvidenceReadiness};
 export default function IncidentEvidencePanel(){
  const [result,setResult]=useState<Result|null>(null);
  const [snapshot,setSnapshot]=useState('');
@@ -57,11 +57,11 @@ export default function IncidentEvidencePanel(){
    finally{setBusy(false);}
   }}>Sincronizar ChefeBot em leitura</button>
   {result&&!result.storageConfigured&&<p role="status">Histórico não conectado: falta o armazenamento privado da Jornada. Nenhum registro foi salvo.</p>}
-  {result?.storageConfigured&&<div role={result.readiness.alert?'alert':'status'} aria-live="polite" className="dc-entry" style={{display:'block',marginBottom:14}}>
-   <strong>{result.readiness.alert?'Amostras suficientes para revisão':'Coleta de evidências em andamento'}</strong>
-   <p>{Math.min(result.readiness.observedSamples,result.readiness.requiredSamples)} de {result.readiness.requiredSamples} leituras válidas e independentes (intervalo mínimo de 5 minutos). Janela registrada: {Math.floor(result.readiness.observedSpanMs/60000)} minutos; mínimo: {Math.floor(result.readiness.requiredSpanMs/60000)}.</p>
-   <p>{result.readiness.message} Importações manuais não contam como prova real. A quantidade necessária para alertas autenticados será calculada em separado.</p>
-   {result.readiness.alert&&<p><strong>Aviso técnico:</strong> {result.readiness.isFresh?'a última amostra está recente.':'a última amostra está antiga.'} A etapa operacional continua INCONCLUSIVA até existir leitura autenticada e correlação real no ChefeBot.</p>}
+  {result?.storageConfigured&&<div role={result.authenticatedReadiness.alert?'alert':'status'} aria-live="polite" className="dc-entry" style={{display:'block',marginBottom:14}}>
+   <strong>{result.authenticatedReadiness.alert?'Dados autenticados suficientes para revisão':'Coleta autenticada em andamento'}</strong>
+   <p>{Math.min(result.authenticatedReadiness.observedSamples,result.authenticatedReadiness.requiredSamples)} de {result.authenticatedReadiness.requiredSamples} leituras autenticadas e independentes (intervalo mínimo de 5 minutos). Janela registrada: {Math.floor(result.authenticatedReadiness.observedSpanMs/60000)} minutos; mínimo: {Math.floor(result.authenticatedReadiness.requiredSpanMs/60000)}.</p>
+   <p>As importações manuais ({result.readiness.observedSamples} leituras elegíveis no histórico) são mantidas para comparação, mas não contam neste limite autenticado.</p>
+   {result.authenticatedReadiness.alert&&<p><strong>Aviso técnico:</strong> {result.authenticatedReadiness.isFresh?'a última amostra está recente.':'a última amostra está antiga.'} A análise operacional ainda é INCONCLUSIVA até provar a correlação do canário com a fila e o webhook.</p>}
   </div>}
   <form onSubmit={record} className="dc-plan-form">
    <label htmlFor="incident-sha">SHA declarado da versão observada (opcional)</label>

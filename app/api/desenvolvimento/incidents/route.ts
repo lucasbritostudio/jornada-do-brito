@@ -4,7 +4,7 @@ import {observationProject,pilotConnection} from '@/lib/devops-project-registry'
 import {observeChefeBot} from '@/lib/devops-observer';
 import {incidentStorageConfigured,listIncidentObservations,recordIncidentObservation} from '@/lib/devops-incidents';
 import {readLimitedJson} from '@/lib/devops-json';
-import {evaluateEvidenceReadiness} from '@/lib/devops-readiness';
+import {evaluateEvidenceReadiness,evaluateAuthenticatedReadiness} from '@/lib/devops-readiness';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -30,6 +30,7 @@ export async function GET(req:Request){
   return NextResponse.json({project,connection:pilotConnection(),storageConfigured:storage,
    observations,
    readiness:evaluateEvidenceReadiness(observations),
+   authenticatedReadiness:evaluateAuthenticatedReadiness(observations),
    lastAuthenticatedAt:observations.find(x=>x.evidence.source.kind==='service_authenticated')?.evidence.observedAt??null,
    historyOutcome:storage?'COMPROVADO':'NÃO EXECUTADO',executed:false,
   },{headers});

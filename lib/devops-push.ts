@@ -11,7 +11,7 @@ export function pushConfigured(){
 }
 export function publicVapidKey(){return pushConfigured()?process.env.VAPID_PUBLIC_KEY:null;}
 
-function validSubscription(s:unknown):s is PushSubscription{
+export function validSubscription(s:unknown):s is PushSubscription{
  if(!s||typeof s!=='object')return false;
  const obj=s as Record<string,unknown>;
  if(typeof obj.endpoint!=='string'||obj.endpoint.length>1800)return false;
