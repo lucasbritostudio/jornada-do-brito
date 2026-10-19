@@ -21,14 +21,18 @@ if (process.env.GITHUB_REF !== 'refs/heads/main' || process.env.CI !== 'true') {
 
 const allowed = (p) => p.startsWith('app/') || p.startsWith('lib/') ||
   p.startsWith('public/') ||
-  ['package.json', 'next.config.ts', 'next-env.d.ts', 'tsconfig.json'].includes(p);
+  ['package.json', 'next.config.ts', 'next-env.d.ts', 'tsconfig.json', 'vercel.json'].includes(p);
 
 const tracked = execFileSync('git', ['ls-files', '-z']).toString('utf8').split('\0').filter(Boolean);
 const sourcePaths = tracked.filter(allowed).sort();
-for (const required of ['app/desenvolvimento/console.tsx', 'app/api/login/route.ts', 'package.json']) {
+for (const required of ['app/desenvolvimento/console.tsx', 'app/api/login/route.ts', 'package.json', 'vercel.json']) {
   if (!sourcePaths.includes(required)) throw new Error('Pacote incompleto: ' + required);
 }
 if (sourcePaths.length < 50) throw new Error('Pacote incompleto: poucos arquivos de código');
+const cronConfig = JSON.parse(readFileSync('vercel.json', 'utf8'));
+if (!Array.isArray(cronConfig.crons) || !cronConfig.crons.some(c =>
+ c.path === '/api/cron/devops-evidence' && c.schedule === '0 12 * * *'))
+ throw new Error('Agendamento diário da evidência ausente no pacote');
 
 const files = sourcePaths.map((file) => {
   const stat = statSync(file);

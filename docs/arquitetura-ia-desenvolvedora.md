@@ -431,3 +431,8 @@ as restrições atuais e não poderá alterar seu próprio verificador/aprovador
 - O manifesto principal da Jornada permanece em `/manifest.webmanifest` com início na raiz `/`.
 - A IA Desenvolvedora usa **manifesto exclusivo** `/devops.webmanifest`, vinculado só à rota `/desenvolvimento` com ícone e nome "Jornada Dev". Não redireciona o aplicativo anterior para a central técnica.
 - O Service Worker preserva seu cache e comportamento existente; recebe somente os listeners adicionais de Web Push.
+
+
+### Correção crítica do pacote de deploy da Agenda
+- O pipeline de publicação da Jornada envia uma allowlist de arquivos pela API da Vercel. Essa lista anterior omitia `vercel.json`, logo um build READY podia **não instalar o cron**.
+- O script passa a incluir explicitamente `vercel.json` e rejeita pacotes sem a agenda diária `/api/cron/devops-evidence`. Um teste protege este contrato. Nenhuma alteração é feita nas regras comerciais nem em outros crons de projetos externos.

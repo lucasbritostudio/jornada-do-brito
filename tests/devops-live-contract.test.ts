@@ -69,3 +69,12 @@ test('manifesto do app Dev não altera instalação original da Jornada',()=>{
  const page=readFileSync(resolve('app/desenvolvimento/page.tsx'),'utf8');
  assert.match(page,/manifest:'\/devops\.webmanifest'/);
 });
+
+test('o deploy oficial inclui agendamento e o valida antes da publicação',()=>{
+ const script=readFileSync(resolve('scripts/deploy-vercel-rest.mjs'),'utf8');
+ const config=JSON.parse(readFileSync(resolve('vercel.json'),'utf8'));
+ assert.ok(script.includes("'vercel.json'].includes(p)"));
+ assert.ok(script.includes("'vercel.json'])"));
+ assert.ok(config.crons.some((x:{path:string;schedule:string})=>
+  x.path==='/api/cron/devops-evidence'&&x.schedule==='0 12 * * *'));
+});
