@@ -1,6 +1,7 @@
 'use client';
 import {useCallback,useEffect,useState} from 'react';
 import IncidentEvidencePanel from './incidents';
+import InstallDevopsApp from './ios-install';
 
 type WorkflowRun={name:string;state:string;result:string|null;sha:string;url:string};
 type Deployment={id:string;state:string;environment:string;url:string|null;createdAt:string|null};
@@ -113,6 +114,7 @@ export default function DevelopmentConsole(){
    <h1>Sua central de <span>desenvolvimento.</span></h1>
    <p>Encontre falhas, acompanhe código e publicações. A IA desenvolvedora será ativada por etapas, sem perder o controle da sua produção.</p>
   </header>
+  <InstallDevopsApp/>
   <section className="dc-status-bar">
    <div><span className="dc-label">MODO ATUAL</span><strong>Somente leitura</strong><small>Nenhuma edição ou deploy pode ser disparado nesta versão</small></div>
    <button onClick={refresh} disabled={busy} className="dc-refresh">{busy?'Consultando…':'Atualizar diagnóstico'}</button>

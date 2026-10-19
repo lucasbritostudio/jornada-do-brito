@@ -1,6 +1,7 @@
 import {observeChefeBot,markAuthenticatedObservation} from './devops-observer';
 import {recordIncidentObservation,listIncidentObservations} from './devops-incidents';
 import {evaluateEvidenceReadiness} from './devops-readiness';
+import {notifyOwnerReview} from './devops-push';
 
 // Domínio fixo impede SSRF via configurações, query ou instruções de LLM.
 // A credencial pertence SOMENTE ao monitor técnico de leitura do ChefeBot.
@@ -34,6 +35,9 @@ export async function syncChefeBotMonitor(){
  const result=await recordIncidentObservation(evidence);
  const updated=await listIncidentObservations('chefebot');
  const readiness=evaluateEvidenceReadiness(updated,now);
+ // Push opcional: alerta somente na transição para amostra suficiente.
+ // Falha da Apple/Blob não altera o resultado da coleta ou os dados do ChefeBot.
+ if(!oldReadiness.alert&&readiness.alert)await notifyOwnerReview().catch(()=>({sent:0}));
  return {
   status:'collected' as const,source:'service_authenticated' as const,
   recordedAt:evidence.receivedAt,reused:result.reused,

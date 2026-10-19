@@ -1,10 +1,20 @@
 {
-  "name": "Jornada do Brito",
-  "short_name": "Jornada",
-  "start_url": "/",
+  "name": "Jornada do Brito — IA Desenvolvedora",
+  "short_name": "Jornada Dev",
+  "id": "/desenvolvimento",
+  "start_url": "/desenvolvimento",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#0b0d10",
   "theme_color": "#0b0d10",
   "lang": "pt-BR",
-  "description": "Sistema pessoal de vida, trabalho, clientes e finanças."
+  "description": "Central privada de engenharia, alertas e diagnóstico dos projetos.",
+  "icons": [
+    {
+      "src": "/devops-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
 }
