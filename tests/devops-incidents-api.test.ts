@@ -227,3 +227,25 @@ test('histórico cheio é preservado: nova entrada é recusada, sem limpeza sile
  assert.equal([...blobs.values()][0].content,original);
  assert.equal(writes,128);
 });
+
+// Gatilho do painel não escreve nem executa teste real automaticamente.
+test('GET mostra progresso e alerta técnico quando a janela importada atinge o mínimo',async()=>{
+ const mk=(time:number)=>{
+  const fixture=monitorFixture();
+  return observeChefeBot({...fixture,checkedAt:time},
+   {projectId:'chefebot',environment:'production',reportedCodeSha:SHA},time);
+ };
+ const base=Date.now()-12*60_000;
+ for(const offset of [0,5*60_000,10*60_000])await store.recordIncidentObservation(mk(base+offset));
+ const response=await api.GET(new Request(url));
+ assert.equal(response.status,200);
+ const body=await response.json();
+ assert.equal(body.readiness.status,'review_ready');
+ assert.equal(body.readiness.alert,true);
+ assert.equal(body.readiness.observedSamples,3);
+ assert.equal(body.readiness.operationalEvidence,'INCONCLUSIVO');
+ assert.equal(body.readiness.realConnectorConnected,false);
+ assert.equal(writes,3);
+ await api.GET(new Request(url));
+ assert.equal(writes,3);
+});

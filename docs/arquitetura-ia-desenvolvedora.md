@@ -390,3 +390,14 @@ as restrições atuais e não poderá alterar seu próprio verificador/aprovador
   permanece INCONCLUSIVA. Executor de patch, deploy e autocorreção produtiva
   continuam desligados. Próxima fase: revisão de segurança, conexão exclusiva
   de leitura e prova de concorrência entre instâncias autorizadas.
+
+
+### Gate econômico de evidências e alerta — 19/10/2026
+
+- Coleta atual é manual e declarada pelo proprietário. Não substitui identidade de leitura do ChefeBot e nunca aprova produção.
+- A tela de incidentes carrega o estado automaticamente ao ser aberta e atualiza após importar uma amostra. Não há polling em background, novo cron, envio externo, WhatsApp ou custo periódico.
+- **Critério técnico para ALERTA DE REVISÃO:** pelo menos 3 snapshots de produção com sinais básicos válidos, horários distintos separados por no mínimo 5 minutos e janela observada de no mínimo 10 minutos; snapshots duplicados, em horário futuro ou inválidos não contam. A revisão diferencia amostra recente (<=30 min) e amostra histórica. Esse limite indica material para diagnóstico, **não prova operacional**.
+- Quando o limite é atingido, o painel exibe um aviso acessível; o status de prova real permanece `INCONCLUSIVO` e a liberação produtiva continua bloqueada.
+- A conclusão operacional exige adaptador do ChefeBot autenticado em leitura, correlação entre job/canário/webhook, provas de funcionamento e gates específicos antes de qualquer edição, automação ou rollout. A ausência dessa conexão não pode ser encoberta por importações.
+- Testes unitários verificam limite, espaçamento, deduplicação, validade e idade; teste da rota confirma aviso sem mutação em GET. Nenhum teste com Blob real foi executado nessa etapa.
+- Critério de continuidade: validar este commit com CI, revisar mecanismo CAS em ambiente isolado antes de automatizar escritas concorrentes, publicar o módulo de coleta sem acesso extra à produção, e observar o aviso quando houver amostras suficientes.

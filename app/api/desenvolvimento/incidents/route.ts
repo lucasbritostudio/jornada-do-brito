@@ -4,6 +4,7 @@ import {observationProject,pilotConnection} from '@/lib/devops-project-registry'
 import {observeChefeBot} from '@/lib/devops-observer';
 import {incidentStorageConfigured,listIncidentObservations,recordIncidentObservation} from '@/lib/devops-incidents';
 import {readLimitedJson} from '@/lib/devops-json';
+import {evaluateEvidenceReadiness} from '@/lib/devops-readiness';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -25,8 +26,10 @@ export async function GET(req:Request){
   const project=observationProject(new URL(req.url).searchParams.get('project')||'chefebot');
   if(project.id!=='chefebot')throw new Error('DEVOPS_ADAPTER_DENIED');
   const storage=incidentStorageConfigured();
+  const observations=storage?await listIncidentObservations(project.id):[];
   return NextResponse.json({project,connection:pilotConnection(),storageConfigured:storage,
-   observations:storage?await listIncidentObservations(project.id):[],
+   observations,
+   readiness:evaluateEvidenceReadiness(observations),
    historyOutcome:storage?'COMPROVADO':'NÃO EXECUTADO',executed:false,
   },{headers});
  }catch(error){return failure(error);}

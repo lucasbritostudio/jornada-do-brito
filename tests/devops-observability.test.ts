@@ -5,6 +5,7 @@ import {investigateObservation} from '../lib/devops-investigator';
 import {decideInvestigationAttempt,type InvestigationAttempt} from '../lib/devops-attempts';
 import {observationProject,pilotConnection} from '../lib/devops-project-registry';
 import {readLimitedJson} from '../lib/devops-json';
+import {evaluateEvidenceReadiness} from '../lib/devops-readiness';
 import {monitorFixture,NOW,SHA} from './devops-v3-fixtures';
 
 const observe=(snapshot:unknown=monitorFixture(),at=NOW)=>observeChefeBot(snapshot,{
@@ -133,4 +134,33 @@ test('limite de payload mede bytes reais, inclusive UTF-8 e transferências chun
  assert.deepEqual(await readLimitedJson(new Response('{"ok":true}').body,11),{ok:true});
  await assert.rejects(()=>readLimitedJson(new Response('"ááá"').body,5),/PAYLOAD_TOO_LARGE/);
  await assert.rejects(()=>readLimitedJson(new Response('{broken').body,100),SyntaxError);
+});
+
+// O limite mede apenas suficiência para revisão; não aprova operação real.
+test('alerta de suficiência requer três timestamps distintos e espaçamento mínimo',()=>{
+ const at=NOW;
+ const e=(delta:number)=>observeChefeBot({...monitorFixture(),checkedAt:at+delta},
+  {projectId:'chefebot',environment:'production',reportedCodeSha:SHA},at+delta);
+ const rows=(...deltas:number[])=>deltas.map(x=>({evidence:e(x)}));
+ const waiting=evaluateEvidenceReadiness(rows(0,1_000,2_000),at+20*60_000);
+ assert.equal(waiting.status,'collecting');
+ assert.equal(waiting.observedSamples,1);
+ const ready=evaluateEvidenceReadiness(rows(0,5*60_000,10*60_000),at+12*60_000);
+ assert.equal(ready.status,'review_ready');
+ assert.equal(ready.alert,true);
+ assert.equal(ready.operationalEvidence,'INCONCLUSIVO');
+ assert.equal(ready.realConnectorConnected,false);
+ assert.equal(ready.isFresh,true);
+ const old=evaluateEvidenceReadiness(rows(0,5*60_000,10*60_000),at+24*60*60_000);
+ assert.equal(old.status,'review_ready');
+ assert.equal(old.isFresh,false);
+});
+test('importação sem estado básico válido não conta como prova para o alerta',()=>{
+ const valid=observe();
+ const broken=observe({...monitorFixture(),metrics:{...monitorFixture().metrics,pending:'0'}});
+ const data=evaluateEvidenceReadiness([{evidence:valid},{evidence:broken}],NOW+1000);
+ assert.equal(data.observedSamples,1);
+ assert.equal(data.alert,false);
+ const future=observe({...monitorFixture(),checkedAt:NOW+60*60_000});
+ assert.equal(evaluateEvidenceReadiness([{evidence:future}],NOW).observedSamples,0);
 });

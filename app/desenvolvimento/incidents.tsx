@@ -1,10 +1,11 @@
 'use client';
-import {useState} from 'react';
+import {useEffect,useState} from 'react';
+import type {EvidenceReadiness} from '@/lib/devops-readiness';
 import type {Observation} from '@/lib/devops-observer';
 import type {Investigation} from '@/lib/devops-investigator';
 
 type RecordView={evidence:Observation;investigation:Investigation|null;analysisOutcome:string;decision:string};
-type Result={storageConfigured:boolean;connection:{reason:string};observations:RecordView[]};
+type Result={storageConfigured:boolean;connection:{reason:string};observations:RecordView[];readiness:EvidenceReadiness};
 export default function IncidentEvidencePanel(){
  const [result,setResult]=useState<Result|null>(null);
  const [snapshot,setSnapshot]=useState('');
@@ -22,6 +23,8 @@ export default function IncidentEvidencePanel(){
   try{await load();}catch(e){setError(e instanceof Error?e.message:'Leitura indisponível.');}
   finally{setBusy(false);}
  }
+ // Consultar uma vez ao entrar, sem polling, cron, chamadas LLM ou custo de Preview.
+ useEffect(()=>{void refresh();},[]);
  async function record(event:React.FormEvent){
   event.preventDefault();setBusy(true);setError('');
   try{
@@ -45,6 +48,12 @@ export default function IncidentEvidencePanel(){
   <p>Analise um snapshot agregado do monitor e preserve as evidências entre sessões. A importação é declarada pelo proprietário; a origem e o funcionamento em produção continuam inconclusivos.</p>
   <p><strong>Conexão ao vivo: NÃO EXECUTADO.</strong> {result?.connection.reason||'Falta uma identidade exclusiva de leitura autorizada no ChefeBot.'}</p>
   {result&&!result.storageConfigured&&<p role="status">Histórico não conectado: falta o armazenamento privado da Jornada. Nenhum registro foi salvo.</p>}
+  {result?.storageConfigured&&<div role={result.readiness.alert?'alert':'status'} aria-live="polite" className="dc-entry" style={{display:'block',marginBottom:14}}>
+   <strong>{result.readiness.alert?'Amostras suficientes para revisão':'Coleta de evidências em andamento'}</strong>
+   <p>{Math.min(result.readiness.observedSamples,result.readiness.requiredSamples)} de {result.readiness.requiredSamples} leituras válidas e independentes (intervalo mínimo de 5 minutos). Janela registrada: {Math.floor(result.readiness.observedSpanMs/60000)} minutos; mínimo: {Math.floor(result.readiness.requiredSpanMs/60000)}.</p>
+   <p>{result.readiness.message}</p>
+   {result.readiness.alert&&<p><strong>Aviso técnico:</strong> {result.readiness.isFresh?'a última amostra está recente.':'a última amostra está antiga.'} A etapa operacional continua INCONCLUSIVA até existir leitura autenticada e correlação real no ChefeBot.</p>}
+  </div>}
   <form onSubmit={record} className="dc-plan-form">
    <label htmlFor="incident-sha">SHA declarado da versão observada (opcional)</label>
    <input id="incident-sha" value={sha} maxLength={40} pattern="[a-f0-9]{40}" onChange={e=>setSha(e.target.value)} placeholder="40 caracteres; será marcado como não verificado"/>
