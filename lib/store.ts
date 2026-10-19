@@ -1,6 +1,7 @@
 import { get, put, list } from '@vercel/blob';
 import type { WorkspaceState, AuditEntry } from './types';
 import { refreshProfessionalPatterns } from './patterns';
+import { isBlobConflict } from './blob-conflict';
 
 const STATE_PATH = 'jornada/state.json';
 const AUTH_PATH = 'jornada/auth.json';
@@ -12,6 +13,8 @@ export type AuthRecord = {
   passwordSalt: string;
   passwordHash: string;
   activatedAt: string;
+  /** Missing only on records created before session revocation was added. */
+  sessionVersion?: number;
 };
 
 function now() {
@@ -168,6 +171,50 @@ export async function saveAuthRecord(record: AuthRecord) {
     addRandomSuffix: false,
     contentType: 'application/json',
   });
+}
+
+export function authSessionVersion(record: AuthRecord) {
+  const value = record.sessionVersion;
+  return Number.isSafeInteger(value) && Number(value) >= 0 ? Number(value) : 0;
+}
+
+/**
+ * Replaces the owner's password with an ETag-guarded write and advances the
+ * session version. The version check prevents two already-authenticated
+ * requests from silently replacing one another's password.
+ */
+export async function rotateAuthPassword(input: {
+  expectedSessionVersion: number;
+  passwordSalt: string;
+  passwordHash: string;
+}) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const current = await readVersionedJson<AuthRecord>(AUTH_PATH);
+    if (!current?.value.activated) throw new Error('AUTH_NOT_ACTIVATED');
+    const currentVersion = authSessionVersion(current.value);
+    if (currentVersion !== input.expectedSessionVersion) {
+      throw new Error('AUTH_SESSION_REVOKED');
+    }
+    const updated: AuthRecord = {
+      ...current.value,
+      passwordSalt: input.passwordSalt,
+      passwordHash: input.passwordHash,
+      sessionVersion: currentVersion + 1,
+    };
+    try {
+      await put(AUTH_PATH, JSON.stringify(updated, null, 2), {
+        access: 'private',
+        allowOverwrite: true,
+        ifMatch: current.etag,
+        addRandomSuffix: false,
+        contentType: 'application/json',
+      });
+      return updated;
+    } catch (error) {
+      if (!isBlobConflict(error) || attempt === 2) throw error;
+    }
+  }
+  throw new Error('AUTH_PASSWORD_ROTATION_FAILED');
 }
 
 export async function getState(): Promise<WorkspaceState> {

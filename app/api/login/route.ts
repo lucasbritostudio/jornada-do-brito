@@ -13,6 +13,6 @@ export async function POST(req: Request) {
   const okPassword = password && verifyPassword(String(password), auth.passwordSalt, auth.passwordHash);
   if (!okEmail || !okPassword) return NextResponse.json({ error: 'E-mail ou senha inválidos.' }, { status: 401 });
   const res = NextResponse.json({ ok: true });
-  res.cookies.set(SESSION_COOKIE, signSession(), { httpOnly: true, secure: true, sameSite: 'lax', path: '/', maxAge: 60*60*24*30 });
+  res.cookies.set(SESSION_COOKIE, signSession(auth.sessionVersion ?? 0), { httpOnly: true, secure: true, sameSite: 'lax', path: '/', maxAge: 60*60*24*30 });
   return res;
 }

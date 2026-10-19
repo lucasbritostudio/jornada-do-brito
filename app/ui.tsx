@@ -15,6 +15,7 @@ import GroqSettings from './groq-settings';
 import AIDrawerV2 from './ai-drawer';
 import WhatsAppSettingsCard from './whatsapp-settings';
 import AiLearningSettingsCard from './ai-learning-settings';
+import PasswordSettings from './password-settings';
 
 type Tab =
   | 'today'
@@ -2004,6 +2005,8 @@ function Settings({ state }: { state: WorkspaceState }) {
         <GroqSettings />
 
         <AiLearningSettingsCard />
+
+        <PasswordSettings />
 
         <div className="card span-12">
           <h3>Conta</h3>
