@@ -137,7 +137,7 @@ export function validateStoredObservation(input:unknown):Observation{
  restored.operationId='observation_'+restored.id.slice(0,24);
  if(value.version!==1||value.id!==restored.id||value.contextDigest!==restored.contextDigest||
   value.verifiedCodeSha!==null||!['owner_import','service_authenticated'].includes(String(sourceKind))||
-  value.verification?.reason!==restored.verification.reason||
+  object(value.verification).reason!==restored.verification.reason||
   value.repository!==restored.repository||!Number.isSafeInteger(value.receivedAt)||
   Number(value.receivedAt)<0)throw new Error('DEVOPS_STORE_INVALID');
  return restored;

@@ -69,3 +69,13 @@ export function evaluateEvidenceReadiness(
    :'Aguardando leituras válidas espaçadas. Amostras importadas e autenticadas são identificadas separadamente.',
  };
 }
+
+/** Evidência suficiente para aviso de dados reais: apenas leituras do servidor
+ * autenticadas, jamais importações manuais, nem autorização de operação.
+ */
+export function evaluateAuthenticatedReadiness(
+ observations:readonly {evidence:Observation}[],now=Date.now(),
+):EvidenceReadiness{
+ const authenticated=observations.filter(x=>x.evidence.source.kind==='service_authenticated');
+ return evaluateEvidenceReadiness(authenticated,now);
+}

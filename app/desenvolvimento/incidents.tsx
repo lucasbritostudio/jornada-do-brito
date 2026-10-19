@@ -60,7 +60,7 @@ export default function IncidentEvidencePanel(){
   {result?.storageConfigured&&<div role={result.readiness.alert?'alert':'status'} aria-live="polite" className="dc-entry" style={{display:'block',marginBottom:14}}>
    <strong>{result.readiness.alert?'Amostras suficientes para revisão':'Coleta de evidências em andamento'}</strong>
    <p>{Math.min(result.readiness.observedSamples,result.readiness.requiredSamples)} de {result.readiness.requiredSamples} leituras válidas e independentes (intervalo mínimo de 5 minutos). Janela registrada: {Math.floor(result.readiness.observedSpanMs/60000)} minutos; mínimo: {Math.floor(result.readiness.requiredSpanMs/60000)}.</p>
-   <p>{result.readiness.message}</p>
+   <p>{result.readiness.message} Importações manuais não contam como prova real. A quantidade necessária para alertas autenticados será calculada em separado.</p>
    {result.readiness.alert&&<p><strong>Aviso técnico:</strong> {result.readiness.isFresh?'a última amostra está recente.':'a última amostra está antiga.'} A etapa operacional continua INCONCLUSIVA até existir leitura autenticada e correlação real no ChefeBot.</p>}
   </div>}
   <form onSubmit={record} className="dc-plan-form">
