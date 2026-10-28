@@ -1,9 +1,6 @@
 import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
-import { head } from '@vercel/blob';
 import { NextResponse } from 'next/server';
 import { requireAuthenticated } from '@/lib/auth';
-import { mutateStateSafely } from '@/lib/state-mutation';
-import type { PortfolioItem } from '@/lib/types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -50,13 +47,19 @@ function uploadError(error: unknown) {
 }
 
 export async function POST(request: Request) {
+  let stage = 'ler pedido do vídeo';
+  let eventType = 'desconhecido';
   try {
     const body = await request.json() as HandleUploadBody;
+    eventType = typeof body?.type === 'string' ? body.type : eventType;
+    stage = 'processar pedido de envio';
     const result = await handleUpload({
       body,
       request,
       onBeforeGenerateToken: async (pathname, clientPayload) => {
+        stage = 'confirmar proprietário';
         await requireAuthenticated();
+        stage = 'validar vídeo';
         const details = parseDetails(clientPayload);
         const filename = safeFilename(details.originalFilename);
         const extension = filename.slice(filename.lastIndexOf('.')).toLowerCase();
@@ -69,47 +72,13 @@ export async function POST(request: Request) {
           addRandomSuffix: true,
           cacheControlMaxAge: 30 * 24 * 60 * 60,
           validUntil: Date.now() + 15 * 60 * 1000,
-          tokenPayload: JSON.stringify(details),
         };
       },
-      onUploadCompleted: async ({ blob, tokenPayload }) => {
-        const details = parseDetails(tokenPayload ?? null);
-        const filename = safeFilename(details.originalFilename);
-        const extension = filename.slice(filename.lastIndexOf('.')).toLowerCase();
-        if (!blob.pathname.startsWith(`${PREFIX}${details.id}/`) || !VIDEO_EXTENSIONS.has(extension) || !VIDEO_TYPES.has(blob.contentType)) {
-          throw new Error('INVALID_VIDEO');
-        }
-        const metadata = await head(blob.pathname);
-        if (metadata.size > MAX_VIDEO_BYTES) throw new Error('INVALID_VIDEO');
-        const now = new Date().toISOString();
-        await mutateStateSafely((state) => {
-          const previous = state.portfolioItems.find((item) => item.id === details.id);
-          if (previous) {
-            previous.blobPathname = blob.pathname;
-            previous.contentType = blob.contentType;
-            previous.originalFilename = filename;
-            previous.sizeBytes = metadata.size;
-            previous.updatedAt = now;
-            return;
-          }
-          const item: PortfolioItem = {
-            id: details.id,
-            title: details.title,
-            description: details.description,
-            blobPathname: blob.pathname,
-            contentType: blob.contentType,
-            originalFilename: filename,
-            sizeBytes: metadata.size,
-            published: details.published,
-            createdAt: now,
-            updatedAt: now,
-          };
-          state.portfolioItems.unshift(item);
-        });
-      },
     });
+    stage = 'responder ao serviço de vídeos';
     return NextResponse.json(result);
   } catch (error) {
+    console.error('[portfolio/upload] request failed', { stage, eventType, name: error instanceof Error ? error.name : 'UnknownError' });
     return uploadError(error);
   }
 }

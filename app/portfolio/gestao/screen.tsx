@@ -15,7 +15,23 @@ type PortfolioItem = {
   updatedAt: string;
   previewUrl: string;
 };
+type PendingUpload = {
+  id: string;
+  pathname: string;
+  originalFilename: string;
+  title: string;
+  description: string;
+  published: boolean;
+};
+type UnregisteredUpload = {
+  id: string;
+  pathname: string;
+  originalFilename: string;
+  sizeBytes: number;
+  uploadedAt: string;
+};
 type PortfolioMetrics = { periodDays: number; plays: number; estimatedBytes: number; items: Array<{ id: string; title: string; plays: number; estimatedBytes: number }> };
+const PENDING_UPLOAD_KEY = 'jornada-portfolio-pending-upload';
 
 const MAX_VIDEO_BYTES = 1024 * 1024 * 1024;
 const moneySize = (bytes: number) => {
@@ -41,6 +57,9 @@ export default function PortfolioManager() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [pendingUpload, setPendingUpload] = useState<PendingUpload | null>(null);
+  const [unregisteredUploads, setUnregisteredUploads] = useState<UnregisteredUpload[]>([]);
+  const [uploadPhase, setUploadPhase] = useState<'uploading' | 'saving' | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
@@ -53,6 +72,7 @@ export default function PortfolioManager() {
     if (!response.ok) throw new Error(data.error || 'Não foi possível carregar seus vídeos.');
     setItems(data.items || []);
     setInstagramUrl(data.instagramUrl || '');
+    setUnregisteredUploads(data.unregisteredUploads || []);
     try {
       const metricsResponse = await fetch('/api/public/portfolio/metrics', { cache: 'no-store' });
       if (metricsResponse.ok) setMetrics(await metricsResponse.json());
@@ -63,49 +83,104 @@ export default function PortfolioManager() {
 
   useEffect(() => { refresh().catch((e) => { setError(e.message); setLoading(false); }); }, [refresh]);
 
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(PENDING_UPLOAD_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as PendingUpload;
+      if (!saved?.id || !saved.pathname || !saved.originalFilename || !saved.title) return;
+      setPendingUpload(saved);
+      setTitle(saved.title);
+      setDescription(saved.description || '');
+      setPublishAfterUpload(saved.published === true);
+      setMessage('Encontramos um vídeo que já foi enviado. Conclua o cadastro para ele aparecer na lista.');
+    } catch {
+      sessionStorage.removeItem(PENDING_UPLOAD_KEY);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (pendingUpload) sessionStorage.setItem(PENDING_UPLOAD_KEY, JSON.stringify(pendingUpload));
+    else sessionStorage.removeItem(PENDING_UPLOAD_KEY);
+  }, [pendingUpload]);
+
+  async function finishUpload(pending: PendingUpload) {
+    const response = await fetch('/api/portfolio/manage', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'complete-upload', ...pending }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'O arquivo foi enviado, mas não consegui salvar o cadastro.');
+
+    setPendingUpload(null);
+    setTitle(''); setDescription(''); setFile(null); setPublishAfterUpload(false); setProgress(0);
+    if (fileInput.current) fileInput.current.value = '';
+    try {
+      await refresh();
+      setMessage(pending.published ? 'Vídeo salvo e publicado no portfólio.' : 'Vídeo salvo. Ele está oculto até você publicar.');
+    } catch {
+      setMessage('Vídeo salvo. Atualize a lista para conferir.');
+    }
+  }
+
   async function submitVideo(event: React.FormEvent) {
     event.preventDefault();
-    if (!file) { setError('Escolha um vídeo para enviar.'); return; }
+    setError('');
+    if (title.trim().length < 2) { setError('Dê um título para este trabalho.'); return; }
+    if (!pendingUpload && !file) { setError('Escolha um vídeo para enviar.'); return; }
+
+    if (pendingUpload) {
+      const updatedPending = { ...pendingUpload, title: title.trim(), description: description.trim(), published: publishAfterUpload };
+      setPendingUpload(updatedPending);
+      setBusy(true); setUploadPhase('saving'); setMessage('O arquivo já está enviado. Estou concluindo o cadastro…');
+      try {
+        await finishUpload(updatedPending);
+        setError('');
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Não consegui concluir o cadastro. Tente novamente.');
+      } finally { setBusy(false); setUploadPhase(null); }
+      return;
+    }
+
+    const selectedFile = file!;
     const supported = ['video/mp4', 'video/webm', 'video/quicktime'];
     const extensions = ['.mp4', '.webm', '.mov'];
-    const filename = safeFilename(file.name);
+    const filename = safeFilename(selectedFile.name);
     const extension = filename.slice(filename.lastIndexOf('.')).toLowerCase();
-    if (!supported.includes(file.type) || !extensions.includes(extension)) {
+    if (!supported.includes(selectedFile.type) || !extensions.includes(extension)) {
       setError('Use um vídeo MP4, WebM ou MOV.'); return;
     }
-    if (file.size > MAX_VIDEO_BYTES) { setError('Este vídeo passa do limite de 1 GB.'); return; }
-    if (title.trim().length < 2) { setError('Dê um título para este trabalho.'); return; }
+    if (selectedFile.size > MAX_VIDEO_BYTES) { setError('Este vídeo passa do limite de 1 GB.'); return; }
 
-    setBusy(true); setProgress(0); setError(''); setMessage('Enviando vídeo…');
-    const id = crypto.randomUUID();
+    setBusy(true); setUploadPhase('uploading'); setProgress(0); setError(''); setMessage('Enviando o arquivo…');
     try {
-      await upload(`jornada/portfolio/${id}/${filename}`, file, {
+      const id = crypto.randomUUID();
+      const blob = await upload(`jornada/portfolio/${id}/${filename}`, selectedFile, {
         access: 'private',
-        contentType: file.type,
+        contentType: selectedFile.type,
         handleUploadUrl: '/api/portfolio/upload',
-        clientPayload: JSON.stringify({ id, title: title.trim(), description: description.trim(), originalFilename: file.name, published: publishAfterUpload }),
-        multipart: file.size > 50 * 1024 * 1024,
+        clientPayload: JSON.stringify({ id, title: title.trim(), description: description.trim(), originalFilename: selectedFile.name, published: publishAfterUpload }),
+        multipart: selectedFile.size > 50 * 1024 * 1024,
         onUploadProgress: (event) => setProgress(Math.round(event.percentage)),
       });
-      setMessage('Vídeo enviado. Salvando os detalhes…');
-      let found = false;
-      for (let attempt = 0; attempt < 8; attempt += 1) {
-        await new Promise((resolve) => setTimeout(resolve, 900));
-        const response = await fetch('/api/portfolio/manage', { cache: 'no-store' });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Não foi possível confirmar o envio.');
-        setItems(data.items || []);
-        setInstagramUrl(data.instagramUrl || '');
-        setLoading(false);
-        if ((data.items || []).some((item: PortfolioItem) => item.id === id)) { found = true; break; }
-      }
-      if (!found) throw new Error('O vídeo foi enviado, mas seus detalhes ainda não apareceram. Atualize a lista antes de tentar enviar de novo.');
-      setTitle(''); setDescription(''); setFile(null); if (fileInput.current) fileInput.current.value = ''; setPublishAfterUpload(false); setProgress(100);
-      setMessage('Vídeo adicionado ao seu portfólio.');
+      const pending: PendingUpload = {
+        id,
+        pathname: blob.pathname,
+        originalFilename: selectedFile.name,
+        title: title.trim(),
+        description: description.trim(),
+        published: publishAfterUpload,
+      };
+      setPendingUpload(pending);
+      setProgress(100);
+      setUploadPhase('saving');
+      setMessage('Arquivo enviado. Agora estou salvando o vídeo no portfólio…');
+      await finishUpload(pending);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Não foi possível enviar o vídeo.');
       setMessage('');
-    } finally { setBusy(false); }
+    } finally { setBusy(false); setUploadPhase(null); }
   }
 
   async function saveInstagram(event: React.FormEvent) {
@@ -167,16 +242,38 @@ export default function PortfolioManager() {
 
     <section className="portfolio-admin-card">
       <h2>Enviar um trabalho</h2>
-      <p>MP4, WebM ou MOV, até 1 GB por vídeo. Recomendação para economizar: MP4 1080p com até 100 MB. Vídeos com mais de 512 MB podem não aproveitar o cache da Vercel. O arquivo fica privado até você publicar o trabalho.</p>
-      <form className="portfolio-form" onSubmit={submitVideo}>
-        <label>Título do trabalho<input required maxLength={120} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ex.: Vídeo da marca X" /></label>
-        <label>Descrição para quem visitar seu portfólio<textarea maxLength={1000} rows={3} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Conte em poucas palavras sobre este trabalho." /></label>
-        <label>Arquivo do vídeo<input ref={fileInput} required type="file" accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov" onChange={(e) => setFile(e.target.files?.[0] || null)} />{file && <small>Este vídeo tem {moneySize(file.size)}. Dez reproduções completas podem transferir até {moneySize(file.size * 10)}, se o cache não for usado.</small>}</label>
-        <label className="portfolio-check"><input type="checkbox" checked={publishAfterUpload} onChange={(e) => setPublishAfterUpload(e.target.checked)} /><span>Publicar no portfólio assim que terminar. Vídeos publicados ficam visíveis a qualquer visitante.</span></label>
-        {busy && <div className="portfolio-progress" aria-live="polite"><span style={{ width: `${progress}%` }} /><small>{progress}% enviado</small></div>}
-        <button className="portfolio-primary" disabled={busy}>{busy ? 'Enviando…' : 'Enviar vídeo'}</button>
+      <p>Preencha o título, escolha o vídeo e clique em enviar. Só considere concluído quando ele aparecer em “Vídeos cadastrados”. Aceitamos MP4, WebM ou MOV, até 1 GB. Para economizar, prefira MP4 1080p com até 100 MB.</p>
+      <form id="portfolio-upload-form" className="portfolio-form" onSubmit={submitVideo}>
+        <label>Título do trabalho<input required maxLength={120} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ex.: Vídeo da marca X" disabled={busy} /></label>
+        <label>Descrição para quem visitar seu portfólio<textarea maxLength={1000} rows={3} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Conte em poucas palavras sobre este trabalho." disabled={busy} /></label>
+        <label>Arquivo do vídeo<input ref={fileInput} required={!pendingUpload} disabled={busy || Boolean(pendingUpload)} type="file" accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov" onChange={(e) => setFile(e.target.files?.[0] || null)} />{file && <small>Este vídeo tem {moneySize(file.size)}. Dez reproduções completas podem transferir até {moneySize(file.size * 10)}, se o cache não for usado.</small>}</label>
+        {pendingUpload && !busy && <p className="portfolio-upload-pending" role="status">O arquivo já foi enviado. Falta concluir o cadastro. Não envie o arquivo outra vez; clique no botão abaixo.</p>}
+        <label className="portfolio-check"><input type="checkbox" checked={publishAfterUpload} disabled={busy} onChange={(e) => setPublishAfterUpload(e.target.checked)} /><span>Mostrar este vídeo para os clientes assim que terminar.</span></label>
+        {uploadPhase && <div className="portfolio-upload-status" role="status" aria-live="polite">
+          <strong>{uploadPhase === 'uploading' ? 'Enviando arquivo' : 'Salvando no portfólio'}</strong>
+          {uploadPhase === 'uploading' ? <><div className="portfolio-progress" role="progressbar" aria-label="Envio do arquivo" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><span style={{ width: `${progress}%` }} /></div><small>{progress}% do arquivo enviado</small></> : <small>O envio terminou. Aguarde a confirmação do cadastro antes de sair desta página.</small>}
+        </div>}
+        <button className="portfolio-primary" disabled={busy}>{busy ? (uploadPhase === 'uploading' ? 'Enviando arquivo…' : 'Salvando cadastro…') : pendingUpload ? 'Concluir cadastro do vídeo' : 'Enviar vídeo'}</button>
       </form>
     </section>
+
+    {unregisteredUploads.length > 0 && <section className="portfolio-admin-card portfolio-recovery-card">
+      <h2>Vídeos enviados que faltam cadastrar</h2>
+      <p>Encontramos arquivos já enviados, mas ainda não salvos no portfólio. Você pode concluir o cadastro sem enviar o vídeo novamente.</p>
+      <div className="portfolio-recovery-list">{unregisteredUploads.map((candidate) => (
+        <div key={candidate.pathname}>
+          <div><strong>{candidate.originalFilename}</strong><small>{moneySize(candidate.sizeBytes)} · enviado em {new Date(candidate.uploadedAt).toLocaleDateString('pt-BR')}</small></div>
+          <button type="button" className="portfolio-secondary" disabled={busy} onClick={() => {
+            const recoveredTitle = candidate.originalFilename.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim();
+            const next: PendingUpload = { id: candidate.id, pathname: candidate.pathname, originalFilename: candidate.originalFilename, title: recoveredTitle, description: '', published: false };
+            setPendingUpload(next); setTitle(recoveredTitle); setDescription(''); setPublishAfterUpload(false); setFile(null);
+            if (fileInput.current) fileInput.current.value = '';
+            setError(''); setMessage('Vídeo encontrado. Revise o título acima e clique em “Concluir cadastro do vídeo”.');
+            document.getElementById('portfolio-upload-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }}>Usar este vídeo sem reenviar</button>
+        </div>
+      ))}</div>
+    </section>}
 
     <section className="portfolio-admin-card">
       <h2>Contato pelo Instagram</h2>
