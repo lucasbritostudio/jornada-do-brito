@@ -304,6 +304,10 @@ export default function Dashboard() {
             <span className="dot-icon" aria-hidden="true" />
             Catálogo e pedidos
           </a>
+          <a href="/portfolio/gestao" style={{display:'flex',gap:11,alignItems:'center',width:'100%',padding:'11px 12px',borderRadius:12,background:'#252619',color:'#e8ff72',fontWeight:750,fontSize:13}}>
+            <span className="dot-icon" aria-hidden="true" />
+            Portfólio de vídeos
+          </a>
           <a href="/desenvolvimento" style={{display:'flex',gap:11,alignItems:'center',width:'100%',padding:'11px 12px',borderRadius:12,background:'#202b35',color:'#d0e7e7',fontWeight:750,fontSize:13}}>
             <span className="dot-icon" aria-hidden="true" />
             Desenvolvimento
@@ -403,6 +407,7 @@ export default function Dashboard() {
         ))}
         <a href="/producao" style={{padding:'12px 9px',color:'#d4eb99',fontWeight:750,whiteSpace:'nowrap'}}>Produção</a>
         <a href="/catalogo/gestao" style={{padding:'12px 9px',color:'#e8ff72',fontWeight:750,whiteSpace:'nowrap'}}>Catálogo</a>
+        <a href="/portfolio/gestao" style={{padding:'12px 9px',color:'#e8ff72',fontWeight:750,whiteSpace:'nowrap'}}>Portfólio</a>
         <a href="/desenvolvimento" style={{padding:'12px 9px',color:'#d0e7e7',fontWeight:750,whiteSpace:'nowrap'}}>Dev</a>
       </nav>
 

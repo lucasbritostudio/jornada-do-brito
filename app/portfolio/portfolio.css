@@ -1,0 +1,65 @@
+.portfolio-public,.portfolio-admin{min-height:100vh;background:#10110f;color:#f3f3ec;padding:clamp(20px,5vw,64px);font-family:Arial,Helvetica,sans-serif}
+.portfolio-public{max-width:1240px;margin:0 auto}
+.portfolio-public-head{max-width:760px;margin:0 auto 42px;text-align:center}
+.portfolio-brand{display:inline-flex;align-items:center;gap:9px;color:#e8ff72;text-decoration:none;font-weight:800;margin-bottom:44px}
+.portfolio-brand:first-letter{font-size:22px}
+.portfolio-brand span{color:#f3f3ec;font-size:14px}
+.portfolio-kicker{display:block;color:#c2d64e;font-size:11px;font-weight:800;letter-spacing:.16em;margin:10px 0}
+.portfolio-public h1{font-size:clamp(38px,7vw,70px);line-height:1.02;letter-spacing:-.05em;margin:14px 0}
+.portfolio-public h1 em{font-style:normal;color:#e8ff72}
+.portfolio-public-head>p,.portfolio-muted{color:#b8b9ae;line-height:1.65}
+.portfolio-primary,.portfolio-secondary,.portfolio-catalog-link{display:inline-flex;justify-content:center;align-items:center;border:0;border-radius:10px;padding:12px 16px;font-weight:750;text-decoration:none;cursor:pointer}
+.portfolio-primary,.portfolio-catalog-link{background:#e8ff72;color:#171811}
+.portfolio-secondary{background:#262820;color:#f2f2e9;border:1px solid #45473d}
+.portfolio-catalog-link{margin-top:14px}
+.portfolio-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr));gap:22px}
+.portfolio-work,.portfolio-admin-card{background:#191a17;border:1px solid #30312b;border-radius:16px;overflow:hidden}
+.portfolio-work video,.portfolio-admin-item video{display:block;width:100%;aspect-ratio:16/9;background:#080908;object-fit:contain}
+.portfolio-work-copy{padding:17px 18px 20px}
+.portfolio-work h2{font-size:19px;margin:0 0 8px}
+.portfolio-work p,.portfolio-empty p,.portfolio-admin-card>p,.portfolio-admin-item>p{color:#b8b9ae;line-height:1.55;margin:0}
+.portfolio-empty{padding:42px 24px;background:#191a17;border:1px solid #30312b;border-radius:16px;text-align:center}
+.portfolio-empty h2{margin:0 0 9px}
+.portfolio-public-footer{display:flex;justify-content:center;gap:24px;flex-wrap:wrap;padding:42px 0 12px}
+.portfolio-public-footer a,.portfolio-admin-footer a,.portfolio-admin-head>div>a{color:#e8ff72;text-decoration:none;font-weight:700}
+.portfolio-admin{max-width:1280px;margin:0 auto}
+.portfolio-admin-head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin:0 auto 26px}
+.portfolio-admin-head>div>a{display:block;margin-bottom:24px}
+.portfolio-admin h1{font-size:clamp(32px,5vw,52px);letter-spacing:-.04em;margin:8px 0}
+.portfolio-admin-head p{color:#b8b9ae;margin:0}
+.portfolio-link-button{background:#252619;color:#e8ff72;border:1px solid #45473d;text-decoration:none;padding:12px 15px;border-radius:10px;font-weight:750;white-space:nowrap}
+.portfolio-error,.portfolio-success{padding:13px 16px;border-radius:10px;margin:16px 0}
+.portfolio-error{background:#451d1b;color:#ffceca}.portfolio-success{background:#202d1d;color:#dcffb4}
+.portfolio-admin-card{padding:22px;margin:18px 0}
+.portfolio-admin-card h2{font-size:20px;margin:0 0 8px}
+.portfolio-admin-card>p{margin:0 0 18px}
+.portfolio-metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:18px 0 12px}
+.portfolio-metric{background:#11120f;border:1px solid #35362f;border-radius:12px;padding:16px}
+.portfolio-metric small{display:block;color:#b8b9ae;font-size:12px;margin-bottom:8px}
+.portfolio-metric strong{font-size:25px;color:#e8ff72}
+.portfolio-metric-note{font-size:12px;margin:10px 0 18px!important}
+.portfolio-metric-list{display:grid;gap:8px}
+.portfolio-metric-list>div{display:flex;justify-content:space-between;gap:14px;border-top:1px solid #30312b;padding:10px 0}
+.portfolio-metric-list span{font-weight:700}.portfolio-metric-list small{color:#b8b9ae;text-align:right}
+.portfolio-usage-link{display:inline-block;margin-top:16px;color:#e8ff72;font-size:13px;font-weight:700;text-decoration:none}
+.portfolio-form{display:grid;gap:15px}
+.portfolio-form label,.portfolio-contact-form label{display:grid;gap:7px;color:#e6e6dc;font-size:13px;font-weight:700}
+.portfolio-form input:not([type=checkbox]),.portfolio-form textarea,.portfolio-contact-form input{width:100%;box-sizing:border-box;border:1px solid #45473d;border-radius:9px;background:#10110f;color:#f3f3ec;padding:12px;font:inherit}
+.portfolio-form input[type=file]{padding:10px}
+.portfolio-check{display:flex!important;align-items:flex-start;gap:10px!important;font-weight:400!important;line-height:1.45}
+.portfolio-check input{margin-top:3px}
+.portfolio-progress{height:28px;position:relative;border-radius:7px;overflow:hidden;background:#30312b}
+.portfolio-progress span{display:block;height:100%;background:#8da333;transition:width .2s}
+.portfolio-progress small{position:absolute;inset:0;display:grid;place-items:center;color:white;font-weight:700}
+.portfolio-contact-form{display:flex;align-items:flex-end;gap:12px}.portfolio-contact-form label{flex:1}
+.portfolio-section-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}.portfolio-section-head p{margin:0;color:#b8b9ae}
+.portfolio-admin-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr));gap:16px}
+.portfolio-admin-item{overflow:hidden;border:1px solid #35362f;border-radius:12px;background:#121310}
+.portfolio-item-title{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:14px 14px 5px}
+.portfolio-item-title h3{font-size:17px;margin:0 0 8px}.portfolio-item-title small{color:#aaa;font-size:12px;white-space:nowrap}
+.portfolio-admin-item>p{padding:0 14px 14px}
+.portfolio-status{font-size:11px;color:#f4cf82;background:#40331d;padding:4px 8px;border-radius:99px}.portfolio-status.published{color:#d9ff8b;background:#27351c}
+.portfolio-admin-item>.portfolio-form{padding:14px}.portfolio-actions{display:flex;gap:8px;flex-wrap:wrap;padding:0 14px 14px}.portfolio-form .portfolio-actions{padding:0}
+.portfolio-admin-item .portfolio-actions button{font:inherit}
+.portfolio-admin-footer{text-align:right;padding:12px 4px 36px}
+@media(max-width:700px){.portfolio-admin-head{align-items:flex-start;flex-direction:column}.portfolio-contact-form{align-items:stretch;flex-direction:column}.portfolio-contact-form button{align-self:flex-start}.portfolio-admin-card{padding:17px}.portfolio-item-title{flex-direction:column}.portfolio-item-title small{white-space:normal}}
