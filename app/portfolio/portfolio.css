@@ -14,7 +14,7 @@
 .portfolio-catalog-link{margin-top:14px}
 .portfolio-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr));gap:22px}
 .portfolio-work,.portfolio-admin-card{background:#191a17;border:1px solid #30312b;border-radius:16px;overflow:hidden}
-.portfolio-work video,.portfolio-admin-item video{display:block;width:100%;aspect-ratio:16/9;background:#080908;object-fit:contain}
+.portfolio-work video,.portfolio-admin-item video{display:block;width:100%;aspect-ratio:9/16;background:#080908;object-fit:contain}
 .portfolio-work-copy{padding:17px 18px 20px}
 .portfolio-work h2{font-size:19px;margin:0 0 8px}
 .portfolio-work p,.portfolio-empty p,.portfolio-admin-card>p,.portfolio-admin-item>p{color:#b8b9ae;line-height:1.55;margin:0}
