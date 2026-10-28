@@ -1,3 +1,4 @@
+import * as realBlobSdk from '@vercel/blob';
 import assert from 'node:assert/strict';
 import {test, mock} from 'node:test';
 import {resolve as resolvePath} from 'node:path';
@@ -16,6 +17,7 @@ class BlobAlreadyExistsError extends Error {
   name='BlobAlreadyExistsError';
 }
 mock.module('@vercel/blob',{namedExports:{
+ ...realBlobSdk,
   list:async()=>({blobs:[]}),
   get:async(path:string)=>{
     const content=blobs.get(path);

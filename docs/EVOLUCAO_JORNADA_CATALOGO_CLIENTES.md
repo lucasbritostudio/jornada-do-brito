@@ -45,3 +45,10 @@
 - Testes específicos da jornada de clientes cobrem exposição pública, consentimento, aprovação, idempotência, proteção de vídeo e ausência de dados pessoais no acompanhamento.
 
 **Próxima ação operacional:** cadastrar os serviços reais em `/catalogo/gestao` e enviar os vídeos em `/portfolio/gestao`.
+
+
+## 28/10/2026 — Correção do cadastro de vídeos
+
+O vídeo de 125,4 MB chegou ao Blob. A falha comprovada nos logs era `Precondition failed: ETag mismatch` ao gravar state.json. A rotina de conflito comparava apenas error.name, mas a classe real do SDK mantém o nome Error. A correção reconhece a classe real e usa versões da API de metadados, verificadas antes e depois da leitura sem cache, para as gravações condicionais. As proteções contra sobrescrita continuam ativas.
+
+A mensagem antiga de salvamento é limpa quando ocorre erro. Foram aprovados 46 testes direcionados, incluindo cadastro de 125 MB, idempotência, concorrência durante leitura e gravação, autenticação e limite de 1 GB. Build aprovado.

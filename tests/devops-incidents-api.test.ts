@@ -1,3 +1,4 @@
+import * as realBlobSdk from '@vercel/blob';
 import assert from 'node:assert/strict';
 import {test,mock,beforeEach,after} from 'node:test';
 import {resolve} from 'node:path';
@@ -12,6 +13,7 @@ class BlobAlreadyExistsError extends Error{name='BlobAlreadyExistsError';}
 const originalToken=process.env.BLOB_READ_WRITE_TOKEN;
 const originalFetch=globalThis.fetch;
 mock.module('@vercel/blob',{namedExports:{
+ ...realBlobSdk,
  get:async(path:string)=>{
   reads++;
   assert.ok(path.startsWith('jornada/devops-v3/chefebot/'));
