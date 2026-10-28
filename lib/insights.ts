@@ -1,4 +1,5 @@
 import type { WorkspaceState } from './types';
+import { summarizeCurrentMonth } from './finance-period';
 
 const brl = (cents: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(cents / 100);
@@ -15,12 +16,11 @@ export function buildInsights(state: WorkspaceState) {
   const waiting = state.conversations.filter((c) => c.status === 'waiting_me' || c.unreadCount > 0);
   const activeGoals = state.goals.filter((g) => g.status === 'active');
   const openOpps = state.opportunities.filter((o) => !['won', 'lost'].includes(o.stage));
-  const month = new Date().toISOString().slice(0, 7);
-  const monthTx = state.transactions.filter(
-    (t) => t.status !== 'cancelled' && t.occurredOn.startsWith(month),
-  );
-  const income = monthTx.filter((t) => t.type === 'income').reduce((s, t) => s + t.amountCents, 0);
-  const expense = monthTx.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amountCents, 0);
+  const monthFinance = summarizeCurrentMonth(state.transactions);
+  const income = monthFinance.incomeCents;
+  const expense = monthFinance.expenseCents;
+  const plannedIncome = monthFinance.plannedIncomeCents;
+  const plannedExpense = monthFinance.plannedExpenseCents;
 
   const recommendations: {
     title: string;
@@ -76,6 +76,14 @@ export function buildInsights(state: WorkspaceState) {
       title: `Mês: ${brl(income - expense)} líquido`,
       detail: `Entradas ${brl(income)} · Saídas ${brl(expense)}.`,
       kind: income >= expense ? 'good' : 'attention',
+    });
+  }
+
+  if (plannedIncome || plannedExpense) {
+    recommendations.push({
+      title: 'Movimentações previstas neste mês',
+      detail: `${brl(plannedIncome)} previstos para entrar · ${brl(plannedExpense)} previstos para sair. Ainda não contam como realizados.`,
+      kind: 'info',
     });
   }
 
