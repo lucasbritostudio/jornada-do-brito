@@ -19,11 +19,18 @@ export function AutomaticCovers({ items, onSaved }: { items: CoverItem[]; onSave
         if (controller.signal.aborted) return;
         const item = missing[index];
         setStatus(`Preparando capas: ${index + 1} de ${missing.length}…`);
-        try {
-          const cover = await createAutomaticCover(item.previewUrl, controller.signal);
-          const saved = await saveVideoCover(item.id, cover, true, controller.signal);
-          if (!controller.signal.aborted) onSaved(item.id, saved);
-        } catch { if (controller.signal.aborted) return; failures++; }
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            if (attempt) setStatus(`Tentando novamente a capa ${index + 1} de ${missing.length}…`);
+            const cover = await createAutomaticCover(item.previewUrl, controller.signal);
+            const saved = await saveVideoCover(item.id, cover, true, controller.signal);
+            if (!controller.signal.aborted) onSaved(item.id, saved);
+            break;
+          } catch {
+            if (controller.signal.aborted) return;
+            if (attempt === 1) failures++;
+          }
+        }
       }
       setStatus(failures ? 'Algumas capas não ficaram prontas. Use “Escolher capa” nesses vídeos para tentar novamente.' : 'As capas automáticas estão prontas. Você pode trocar qualquer uma em “Escolher capa”.');
     })();
@@ -67,9 +74,10 @@ export function CoverEditor({ item, onSaved, onClose }: { item: CoverItem; onSav
       setDuration(media.duration);
       const initial = Math.min(item.coverFrameSeconds ?? automaticFrame(media.duration), Math.max(0, media.duration - 0.01));
       media.currentTime = initial; setSeconds(initial);
-    }} onLoadedData={() => setReady(true)} onSeeked={() => setReady(true)} onTimeUpdate={event => setSeconds(event.currentTarget.currentTime)} onError={() => setError('Não consegui abrir este vídeo. Feche e tente novamente.')} />
-    <label className="portfolio-cover-slider">Momento da capa<input type="range" min="0" max={Math.max(0, duration - 0.01)} step="0.01" value={seconds} disabled={!ready || busy} onChange={event => seek(Number(event.target.value))} /></label>
-    <div className="portfolio-cover-time"><label>Tempo em segundos<input type="number" min="0" max={Math.max(0, duration - 0.01)} step="0.01" value={Number(seconds.toFixed(2))} disabled={!ready || busy} onChange={event => seek(Number(event.target.value))} /></label><span>de {duration.toFixed(2)} segundos</span></div>
+    }} onSeeking={() => setReady(false)} onLoadedData={event => setReady(!event.currentTarget.seeking)} onSeeked={event => setReady(event.currentTarget.readyState >= 2)} onTimeUpdate={event => setSeconds(event.currentTarget.currentTime)} onError={() => setError('Não consegui abrir este vídeo. Feche e tente novamente.')} />
+    {!ready && !error && <p className="portfolio-muted" role="status">{duration ? 'Carregando este momento do vídeo…' : 'Abrindo vídeo…'}</p>}
+    <label className="portfolio-cover-slider">Momento da capa<input type="range" min="0" max={Math.max(0, duration - 0.01)} step="0.01" value={seconds} disabled={!duration || busy} onChange={event => seek(Number(event.target.value))} /></label>
+    <div className="portfolio-cover-time"><label>Tempo em segundos<input type="number" min="0" max={Math.max(0, duration - 0.01)} step="0.01" value={Number(seconds.toFixed(2))} disabled={!duration || busy} onChange={event => seek(Number(event.target.value))} /></label><span>de {duration.toFixed(2)} segundos</span></div>
     {error && <p role="alert" className="portfolio-error">{error}</p>}
     <div className="portfolio-cover-actions"><button type="button" className="portfolio-secondary" disabled={!ready || busy} onClick={() => seek(automaticFrame(duration))}>Escolher automaticamente</button><button type="button" className="portfolio-primary" disabled={!ready || busy} onClick={save}>{busy ? 'Salvando capa…' : 'Usar este momento como capa'}</button></div>
   </dialog>;
