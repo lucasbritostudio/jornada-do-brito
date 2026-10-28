@@ -7,6 +7,7 @@ import type {
   StudyEvent,
   WorkspaceState,
 } from '@/lib/types';
+import { summarizeCurrentMonth } from '@/lib/finance-period';
 import {
   CINEMA_DECISION_RULE,
   VIDEO_PROFESSIONAL_METHOD,
@@ -124,18 +125,7 @@ export default function Dashboard() {
   const derived = useMemo(() => {
     if (!state) return null;
 
-    const month = new Date().toISOString().slice(0, 7);
-    const transactions = state.transactions.filter(
-      (item) =>
-        item.status !== 'cancelled' &&
-        item.occurredOn.startsWith(month),
-    );
-    const income = transactions
-      .filter((item) => item.type === 'income')
-      .reduce((sum, item) => sum + item.amountCents, 0);
-    const expense = transactions
-      .filter((item) => item.type === 'expense')
-      .reduce((sum, item) => sum + item.amountCents, 0);
+    const monthFinance = summarizeCurrentMonth(state.transactions);
 
     const structuralDebts = state.debts
       .filter(
@@ -204,9 +194,12 @@ export default function Dashboard() {
       );
 
     return {
-      income,
-      expense,
-      net: income - expense,
+      income: monthFinance.incomeCents,
+      expense: monthFinance.expenseCents,
+      net: monthFinance.netCents,
+      plannedIncome: monthFinance.plannedIncomeCents,
+      plannedExpense: monthFinance.plannedExpenseCents,
+      hasClearedMonthActivity: monthFinance.hasClearedTransactions,
       structuralDebts,
       bankCash,
       rescuable,
@@ -1085,6 +1078,26 @@ function Finance({
     | 'obligations'
   >('overview');
 
+  const hasCashBalance = state.financialAccounts.some(
+    (account) =>
+      account.active && ['cash', 'bank', 'wallet'].includes(account.type),
+  );
+  const availableBalance = d.bankCash - d.obligations;
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  const dueSoonThrough = new Date(today);
+  dueSoonThrough.setDate(dueSoonThrough.getDate() + 30);
+  const upcomingObligations = state.obligations
+    .filter((item) => {
+      if (item.status !== 'planned' || !item.dueDate) return false;
+      const due = new Date(`${item.dueDate.slice(0, 10)}T12:00:00`);
+      return due <= dueSoonThrough;
+    })
+    .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
+  const obligationsWithoutDueDate = state.obligations.filter(
+    (item) => item.status === 'planned' && !item.dueDate,
+  ).length;
+
   return (
     <>
       <section className="hero">
@@ -1100,8 +1113,15 @@ function Finance({
 
       <div className="grid">
         <div className="card span-4">
-          <div className="metric-label">Bancos / dinheiro</div>
-          <div className="metric">{brl(d.bankCash)}</div>
+          <div className="metric-label">Saldo disponível após contas</div>
+          <div className="metric">
+            {hasCashBalance ? brl(availableBalance) : 'Sem saldo cadastrado'}
+          </div>
+          <div className="metric-sub">
+            {hasCashBalance
+              ? `${brl(d.bankCash)} em bancos/dinheiro − ${brl(d.obligations)} em contas planejadas`
+              : 'Cadastre um saldo para calcular o valor disponível.'}
+          </div>
         </div>
         <div className="card span-4">
           <div className="metric-label">Resgatável separado</div>
@@ -1156,6 +1176,64 @@ function Finance({
       </div>
 
       {view === 'overview' && (
+        <>
+        <div className="card" style={{ marginBottom: 16 }}>
+          <h3>Resumo realizado deste mês</h3>
+          <div className="grid">
+            <div className="span-4">
+              <div className="metric-label">Entrou</div>
+              <div className="metric">{brl(d.income)}</div>
+            </div>
+            <div className="span-4">
+              <div className="metric-label">Saiu</div>
+              <div className="metric">{brl(d.expense)}</div>
+            </div>
+            <div className="span-4">
+              <div className="metric-label">Resultado</div>
+              <div className="metric">{brl(d.net)}</div>
+            </div>
+          </div>
+          {!d.hasClearedMonthActivity && (
+            <div className="metric-sub">
+              Ainda não há movimentações confirmadas neste mês.
+            </div>
+          )}
+          {(d.plannedIncome > 0 || d.plannedExpense > 0) && (
+            <div className="metric-sub">
+              Em previsão: {brl(d.plannedIncome)} para entrar · {brl(d.plannedExpense)} para sair. Não incluído no resultado realizado.
+            </div>
+          )}
+        </div>
+
+        <div className="card" style={{ marginBottom: 16 }}>
+          <h3>Contas próximas — 30 dias</h3>
+          {upcomingObligations.length ? (
+            <div className="list">
+              {upcomingObligations.map((item) => {
+                const isOverdue = new Date(`${item.dueDate!.slice(0, 10)}T12:00:00`) < today;
+                return (
+                  <div className="row" key={item.id}>
+                    <div>
+                      <div className="row-title">{item.title}</div>
+                      <div className="row-sub">
+                        {item.kind} · {isOverdue ? 'Vencida' : `Vence ${dateLabel(item.dueDate)}`}
+                      </div>
+                    </div>
+                    <strong>{brl(item.amountCents)}</strong>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="empty">Nenhuma conta planejada com vencimento nos próximos 30 dias.</div>
+          )}
+          {obligationsWithoutDueDate > 0 && (
+            <div className="metric-sub">
+              {obligationsWithoutDueDate} conta(s) planejada(s) sem data de vencimento.
+            </div>
+          )}
+        </div>
+
         <div className="card">
           <h3>Contas e saldos registrados</h3>
           {state.financialAccounts.length ? (
@@ -1198,6 +1276,7 @@ function Finance({
             </div>
           )}
         </div>
+        </>
       )}
 
       {view === 'transactions' && (
@@ -1209,6 +1288,7 @@ function Finance({
                   <th>Data</th>
                   <th>Descrição</th>
                   <th>Categoria</th>
+                  <th>Situação</th>
                   <th>Valor</th>
                 </tr>
               </thead>
@@ -1218,6 +1298,13 @@ function Finance({
                     <td>{dateLabel(item.occurredOn)}</td>
                     <td>{item.description}</td>
                     <td>{item.category || '—'}</td>
+                    <td>
+                      {item.status === 'cleared'
+                        ? 'Confirmada'
+                        : item.status === 'planned'
+                          ? 'Prevista'
+                          : 'Cancelada'}
+                    </td>
                     <td style={{ fontWeight: 800 }}>
                       {item.type === 'expense' ? '- ' : '+ '}
                       {brl(item.amountCents)}
