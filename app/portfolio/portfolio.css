@@ -51,6 +51,15 @@
 .portfolio-progress{height:28px;position:relative;border-radius:7px;overflow:hidden;background:#30312b}
 .portfolio-progress span{display:block;height:100%;background:#8da333;transition:width .2s}
 .portfolio-progress small{position:absolute;inset:0;display:grid;place-items:center;color:white;font-weight:700}
+.portfolio-upload-status{display:grid;gap:8px;padding:13px 14px;border:1px solid #45473d;border-radius:10px;background:#11120f;color:#f3f3ec}
+.portfolio-upload-status small,.portfolio-upload-pending{color:#d7e59b;line-height:1.5}
+.portfolio-upload-pending{padding:12px 14px;border-radius:10px;background:#282a1f;margin:0!important}
+.portfolio-form input:disabled,.portfolio-form textarea:disabled{opacity:.72}
+.portfolio-recovery-card{border-color:#596334}
+.portfolio-recovery-list{display:grid;gap:10px}
+.portfolio-recovery-list>div{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px;border:1px solid #35362f;border-radius:10px;background:#11120f}
+.portfolio-recovery-list strong,.portfolio-recovery-list small{display:block}
+.portfolio-recovery-list small{margin-top:5px;color:#b8b9ae}
 .portfolio-contact-form{display:flex;align-items:flex-end;gap:12px}.portfolio-contact-form label{flex:1}
 .portfolio-section-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}.portfolio-section-head p{margin:0;color:#b8b9ae}
 .portfolio-admin-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr));gap:16px}
@@ -63,3 +72,4 @@
 .portfolio-admin-item .portfolio-actions button{font:inherit}
 .portfolio-admin-footer{text-align:right;padding:12px 4px 36px}
 @media(max-width:700px){.portfolio-admin-head{align-items:flex-start;flex-direction:column}.portfolio-contact-form{align-items:stretch;flex-direction:column}.portfolio-contact-form button{align-self:flex-start}.portfolio-admin-card{padding:17px}.portfolio-item-title{flex-direction:column}.portfolio-item-title small{white-space:normal}}
+@media(max-width:700px){.portfolio-recovery-list>div{align-items:flex-start;flex-direction:column}}
