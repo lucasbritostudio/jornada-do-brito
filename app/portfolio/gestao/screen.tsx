@@ -138,6 +138,7 @@ export default function PortfolioManager() {
         await finishUpload(updatedPending);
         setError('');
       } catch (e) {
+        setMessage('');
         setError(e instanceof Error ? e.message : 'Não consegui concluir o cadastro. Tente novamente.');
       } finally { setBusy(false); setUploadPhase(null); }
       return;

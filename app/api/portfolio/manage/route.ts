@@ -176,7 +176,8 @@ export async function POST(request: Request) {
     if (message === 'STATE_WRITE_CONFLICT') return NextResponse.json({ error: 'Houve outra alteração ao mesmo tempo. Tente novamente.' }, { status: 409 });
     if (message === 'INVALID_INPUT') return NextResponse.json({ error: 'Confira os campos antes de salvar.' }, { status: 400 });
     if (message === 'INVALID_VIDEO') return NextResponse.json({ error: 'O arquivo não passou na conferência. Escolha um MP4, WebM ou MOV com até 1 GB.' }, { status: 400 });
-    console.error('[portfolio/manage] request failed', { action, stage, name: error instanceof Error ? error.name : 'UnknownError' });
+    const diagnostic = message.replace(/https?:\/\/\S+/g, '[url]').replace(/vercel_blob_[\w-]+/g, '[token]').replace(/Bearer\s+\S+/gi, 'Bearer [token]').slice(0, 500);
+    console.error('[portfolio/manage] request failed', { action, stage, name: error instanceof Error ? error.name : 'UnknownError', diagnostic });
     if (action === 'complete-upload') {
       return NextResponse.json({ error: 'O arquivo já chegou, mas não consegui salvar os detalhes. Tente salvar novamente sem enviar o arquivo outra vez.' }, { status: 502 });
     }
