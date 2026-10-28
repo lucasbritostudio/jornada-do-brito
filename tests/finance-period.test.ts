@@ -1,7 +1,15 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { summarizeCurrentMonth } from '../lib/finance-period';
-import type { Transaction } from '../lib/types';
+import {
+  listUpcomingObligations,
+  summarizeAvailableCash,
+  summarizeCurrentMonth,
+} from '../lib/finance-period';
+import type {
+  FinancialAccount,
+  FinancialObligation,
+  Transaction,
+} from '../lib/types';
 
 function tx(overrides: Partial<Transaction>): Transaction {
   return {
@@ -44,4 +52,70 @@ test('indica quando ainda não há movimentação confirmada', () => {
   assert.equal(summary.netCents, 0);
   assert.equal(summary.plannedIncomeCents, 10000);
   assert.equal(summary.hasClearedTransactions, false);
+});
+
+function account(overrides: Partial<FinancialAccount>): FinancialAccount {
+  return {
+    id: 'account-1',
+    name: 'Conta de teste',
+    type: 'bank',
+    openingBalanceCents: 0,
+    active: true,
+    createdAt: '2026-10-01T12:00:00.000Z',
+    updatedAt: '2026-10-01T12:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function obligation(overrides: Partial<FinancialObligation>): FinancialObligation {
+  return {
+    id: 'obligation-1',
+    title: 'Conta de teste',
+    amountCents: 0,
+    kind: 'personal',
+    status: 'planned',
+    createdAt: '2026-10-01T12:00:00.000Z',
+    updatedAt: '2026-10-01T12:00:00.000Z',
+    ...overrides,
+  };
+}
+
+test('saldo disponível subtrai só contas planejadas de dinheiro líquido', () => {
+  const summary = summarizeAvailableCash(
+    [
+      account({ id: 'bank', currentBalanceCents: 100000 }),
+      account({ id: 'wallet', type: 'wallet', currentBalanceCents: 5000 }),
+      account({ id: 'investment', type: 'own_collateral', currentBalanceCents: 30000 }),
+      account({ id: 'inactive', active: false, currentBalanceCents: 90000 }),
+    ],
+    [
+      obligation({ id: 'planned', amountCents: 25000 }),
+      obligation({ id: 'review', amountCents: 10000, status: 'review' }),
+      obligation({ id: 'paid', amountCents: 5000, status: 'paid' }),
+    ],
+  );
+
+  assert.equal(summary.bankCashCents, 105000);
+  assert.equal(summary.plannedObligationsCents, 25000);
+  assert.equal(summary.availableCents, 80000);
+  assert.equal(summary.hasCashAccount, true);
+});
+
+test('mostra vencidas e próximas, exclui contas pagas/canceladas e conta datas ausentes', () => {
+  const result = listUpcomingObligations(
+    [
+      obligation({ id: 'overdue', dueDate: '2026-10-01' }),
+      obligation({ id: 'soon', dueDate: '2026-11-01' }),
+      obligation({ id: 'far', dueDate: '2026-12-10' }),
+      obligation({ id: 'paid', dueDate: '2026-10-29', status: 'paid' }),
+      obligation({ id: 'cancelled', dueDate: '2026-10-29', status: 'cancelled' }),
+      obligation({ id: 'undated' }),
+    ],
+    new Date('2026-10-28T12:00:00.000Z'),
+  );
+
+  assert.deepEqual(result.items.map((item) => item.id), ['overdue', 'soon']);
+  assert.equal(result.items[0].overdue, true);
+  assert.equal(result.items[1].overdue, false);
+  assert.equal(result.withoutDueDateCount, 1);
 });

@@ -1,4 +1,8 @@
-import type { Transaction } from './types';
+import type {
+  FinancialAccount,
+  FinancialObligation,
+  Transaction,
+} from './types';
 
 export type MonthFinanceSummary = {
   incomeCents: number;
@@ -35,5 +39,60 @@ export function summarizeCurrentMonth(
     plannedIncomeCents: sum(planned, 'income'),
     plannedExpenseCents: sum(planned, 'expense'),
     hasClearedTransactions: cleared.length > 0,
+  };
+}
+
+export function summarizeAvailableCash(
+  accounts: FinancialAccount[],
+  obligations: FinancialObligation[],
+) {
+  const cashAccounts = accounts.filter(
+    (account) =>
+      account.active && ['cash', 'bank', 'wallet'].includes(account.type),
+  );
+  const bankCashCents = cashAccounts.reduce(
+    (total, account) =>
+      total + (account.currentBalanceCents ?? account.openingBalanceCents),
+    0,
+  );
+  const plannedObligationsCents = obligations
+    .filter((item) => item.status === 'planned')
+    .reduce((total, item) => total + item.amountCents, 0);
+
+  return {
+    bankCashCents,
+    plannedObligationsCents,
+    availableCents: bankCashCents - plannedObligationsCents,
+    hasCashAccount: cashAccounts.length > 0,
+  };
+}
+
+export function listUpcomingObligations(
+  obligations: FinancialObligation[],
+  now = new Date(),
+  days = 30,
+) {
+  const today = new Date(now);
+  today.setHours(12, 0, 0, 0);
+  const through = new Date(today);
+  through.setDate(through.getDate() + days);
+
+  const items = obligations
+    .filter((item) => {
+      if (item.status !== 'planned' || !item.dueDate) return false;
+      const due = new Date(`${item.dueDate.slice(0, 10)}T12:00:00`);
+      return !Number.isNaN(due.getTime()) && due <= through;
+    })
+    .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''))
+    .map((item) => ({
+      ...item,
+      overdue: new Date(`${item.dueDate!.slice(0, 10)}T12:00:00`) < today,
+    }));
+
+  return {
+    items,
+    withoutDueDateCount: obligations.filter(
+      (item) => item.status === 'planned' && !item.dueDate,
+    ).length,
   };
 }

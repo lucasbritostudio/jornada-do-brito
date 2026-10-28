@@ -3,11 +3,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import type {
   ConversationAutomationMode,
+  FinancialAccount,
   StudyArea,
   StudyEvent,
   WorkspaceState,
 } from '@/lib/types';
-import { summarizeCurrentMonth } from '@/lib/finance-period';
+import {
+  listUpcomingObligations,
+  summarizeAvailableCash,
+  summarizeCurrentMonth,
+} from '@/lib/finance-period';
 import {
   CINEMA_DECISION_RULE,
   VIDEO_PROFESSIONAL_METHOD,
@@ -62,6 +67,14 @@ const certaintyLabel: Record<string, string> = {
   forecast: 'Previsão',
   pending: 'Pendente',
   interpretation: 'Interpretação',
+};
+
+const accountTypeLabel: Record<FinancialAccount['type'], string> = {
+  cash: 'Dinheiro',
+  bank: 'Banco',
+  wallet: 'Carteira digital',
+  credit_card: 'Cartão de crédito',
+  own_collateral: 'Aplicação resgatável',
 };
 
 export default function Dashboard() {
@@ -126,6 +139,10 @@ export default function Dashboard() {
     if (!state) return null;
 
     const monthFinance = summarizeCurrentMonth(state.transactions);
+    const cashSummary = summarizeAvailableCash(
+      state.financialAccounts,
+      state.obligations,
+    );
 
     const structuralDebts = state.debts
       .filter(
@@ -133,18 +150,6 @@ export default function Dashboard() {
           item.status === 'active' && item.structural !== false,
       )
       .reduce((sum, item) => sum + item.currentBalanceCents, 0);
-
-    const bankCash = state.financialAccounts
-      .filter(
-        (item) =>
-          item.active &&
-          ['cash', 'bank', 'wallet'].includes(item.type),
-      )
-      .reduce(
-        (sum, item) =>
-          sum + (item.currentBalanceCents ?? item.openingBalanceCents),
-        0,
-      );
 
     const rescuable = state.financialAccounts
       .filter((item) => item.active)
@@ -160,10 +165,6 @@ export default function Dashboard() {
         }
         return sum;
       }, 0);
-
-    const obligations = state.obligations
-      .filter((item) => item.status === 'planned')
-      .reduce((sum, item) => sum + item.amountCents, 0);
 
     const obligationsInReview = state.obligations
       .filter((item) => item.status === 'review')
@@ -201,9 +202,11 @@ export default function Dashboard() {
       plannedExpense: monthFinance.plannedExpenseCents,
       hasClearedMonthActivity: monthFinance.hasClearedTransactions,
       structuralDebts,
-      bankCash,
+      bankCash: cashSummary.bankCashCents,
+      availableBalance: cashSummary.availableCents,
+      hasCashBalance: cashSummary.hasCashAccount,
       rescuable,
-      obligations,
+      obligations: cashSummary.plannedObligationsCents,
       obligationsInReview,
       confirmedReceivables,
       estimatedReceivables,
@@ -333,7 +336,7 @@ export default function Dashboard() {
           {tab === 'work' && <Work state={state} />}
 
           {tab === 'finance' && (
-            <Finance state={state} d={derived} />
+            <Finance state={state} d={derived} save={mutate} />
           )}
 
           {tab === 'journey' && (
@@ -1066,9 +1069,11 @@ function Work({ state }: { state: WorkspaceState }) {
 function Finance({
   state,
   d,
+  save,
 }: {
   state: WorkspaceState;
   d: any;
+  save: (collection: string, record: any) => Promise<boolean>;
 }) {
   const [view, setView] = useState<
     | 'overview'
@@ -1077,27 +1082,60 @@ function Finance({
     | 'receivables'
     | 'obligations'
   >('overview');
-
-  const hasCashBalance = state.financialAccounts.some(
-    (account) =>
-      account.active && ['cash', 'bank', 'wallet'].includes(account.type),
+  const [accountFormOpen, setAccountFormOpen] = useState(false);
+  const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
+  const [accountName, setAccountName] = useState('');
+  const [accountType, setAccountType] = useState<FinancialAccount['type']>('bank');
+  const [accountBalance, setAccountBalance] = useState('');
+  const [accountBalanceDate, setAccountBalanceDate] = useState(
+    new Date().toISOString().slice(0, 10),
   );
-  const availableBalance = d.bankCash - d.obligations;
-  const today = new Date();
-  today.setHours(12, 0, 0, 0);
-  const dueSoonThrough = new Date(today);
-  dueSoonThrough.setDate(dueSoonThrough.getDate() + 30);
-  const upcomingObligations = state.obligations
-    .filter((item) => {
-      if (item.status !== 'planned' || !item.dueDate) return false;
-      const due = new Date(`${item.dueDate.slice(0, 10)}T12:00:00`);
-      return due <= dueSoonThrough;
-    })
-    .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
-  const obligationsWithoutDueDate = state.obligations.filter(
-    (item) => item.status === 'planned' && !item.dueDate,
-  ).length;
 
+  const hasCashBalance = d.hasCashBalance;
+  const availableBalance = d.availableBalance;
+  const upcomingObligations = listUpcomingObligations(state.obligations);
+
+  function openAccountForm(account?: FinancialAccount) {
+    setEditingAccountId(account?.id || null);
+    setAccountName(account?.name || '');
+    setAccountType(account?.type || 'bank');
+    setAccountBalance(
+      account
+        ? String(((account.currentBalanceCents ?? account.openingBalanceCents) / 100).toFixed(2)).replace('.', ',')
+        : '',
+    );
+    setAccountBalanceDate(
+      account?.balanceAsOf?.slice(0, 10) || new Date().toISOString().slice(0, 10),
+    );
+    setAccountFormOpen(true);
+  }
+
+  async function saveAccount(event: React.FormEvent) {
+    event.preventDefault();
+    const name = accountName.trim();
+    const balanceCents = moneyToCents(accountBalance);
+    if (!name || balanceCents < 0 || !accountBalanceDate) return;
+
+    const existing = state.financialAccounts.find(
+      (account) => account.id === editingAccountId,
+    );
+    const record: Partial<FinancialAccount> = {
+      ...(existing || {}),
+      name,
+      type: accountType,
+      openingBalanceCents: existing?.openingBalanceCents ?? balanceCents,
+      currentBalanceCents: balanceCents,
+      balanceAsOf: accountBalanceDate,
+      rescuableBalanceCents:
+        accountType === 'own_collateral' ? balanceCents : undefined,
+      active: true,
+    };
+
+    if (await save('financialAccounts', record)) {
+      setAccountFormOpen(false);
+      setEditingAccountId(null);
+    }
+  }
   return (
     <>
       <section className="hero">
@@ -1206,17 +1244,16 @@ function Finance({
         </div>
 
         <div className="card" style={{ marginBottom: 16 }}>
-          <h3>Contas próximas — 30 dias</h3>
-          {upcomingObligations.length ? (
+          <h3>Vencidas e próximas — 30 dias</h3>
+          {upcomingObligations.items.length ? (
             <div className="list">
-              {upcomingObligations.map((item) => {
-                const isOverdue = new Date(`${item.dueDate!.slice(0, 10)}T12:00:00`) < today;
+              {upcomingObligations.items.map((item) => {
                 return (
                   <div className="row" key={item.id}>
                     <div>
                       <div className="row-title">{item.title}</div>
                       <div className="row-sub">
-                        {item.kind} · {isOverdue ? 'Vencida' : `Vence ${dateLabel(item.dueDate)}`}
+                        {item.kind} · {item.overdue ? 'Vencida' : `Vence ${dateLabel(item.dueDate)}`}
                       </div>
                     </div>
                     <strong>{brl(item.amountCents)}</strong>
@@ -1227,15 +1264,72 @@ function Finance({
           ) : (
             <div className="empty">Nenhuma conta planejada com vencimento nos próximos 30 dias.</div>
           )}
-          {obligationsWithoutDueDate > 0 && (
+          {upcomingObligations.withoutDueDateCount > 0 && (
             <div className="metric-sub">
-              {obligationsWithoutDueDate} conta(s) planejada(s) sem data de vencimento.
+              {upcomingObligations.withoutDueDateCount} conta(s) planejada(s) sem data de vencimento.
             </div>
           )}
         </div>
 
         <div className="card">
-          <h3>Contas e saldos registrados</h3>
+          <div className="row" style={{ paddingTop: 0 }}>
+            <h3>Contas e saldos registrados</h3>
+            <button
+              className="btn secondary small"
+              type="button"
+              onClick={() => openAccountForm()}
+            >
+              Adicionar conta/saldo
+            </button>
+          </div>
+          {accountFormOpen && (
+            <form className="form-grid" onSubmit={saveAccount} style={{ marginBottom: 18 }}>
+              <F
+                label="Nome da conta"
+                value={accountName}
+                set={setAccountName}
+                req
+              />
+              <div className="field">
+                <label>Tipo</label>
+                <select
+                  className="select"
+                  value={accountType}
+                  onChange={(event) => setAccountType(event.target.value as FinancialAccount['type'])}
+                >
+                  {(['bank', 'cash', 'wallet', 'own_collateral'] as const).map((type) => (
+                    <option key={type} value={type}>{accountTypeLabel[type]}</option>
+                  ))}
+                </select>
+              </div>
+              <F
+                label="Saldo atual (R$)"
+                value={accountBalance}
+                set={setAccountBalance}
+                inputMode="decimal"
+                req
+              />
+              <F
+                label="Data deste saldo"
+                type="date"
+                value={accountBalanceDate}
+                set={setAccountBalanceDate}
+                req
+              />
+              <div className="full toolbar">
+                <button className="btn" type="submit">
+                  {editingAccountId ? 'Atualizar saldo' : 'Salvar conta'}
+                </button>
+                <button
+                  className="btn secondary"
+                  type="button"
+                  onClick={() => setAccountFormOpen(false)}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          )}
           {state.financialAccounts.length ? (
             <div className="list">
               {state.financialAccounts.map((account) => (
@@ -1248,7 +1342,7 @@ function Finance({
                       {account.name}
                     </div>
                     <div className="row-sub">
-                      {account.type}
+                      {accountTypeLabel[account.type] || account.type}
                       {account.balanceAsOf
                         ? ` · posição de ${dateLabel(account.balanceAsOf)}`
                         : ''}
@@ -1266,6 +1360,14 @@ function Finance({
                         {brl(account.rescuableBalanceCents)} resgatável
                       </div>
                     )}
+                    <button
+                      className="btn secondary small"
+                      type="button"
+                      style={{ marginTop: 8 }}
+                      onClick={() => openAccountForm(account)}
+                    >
+                      Atualizar saldo
+                    </button>
                   </div>
                 </div>
               ))}
@@ -2665,12 +2767,14 @@ function F({
   value,
   set,
   type = 'text',
+  inputMode,
   req = false,
 }: {
   label: string;
   value: string;
   set: (value: string) => void;
   type?: string;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode'];
   req?: boolean;
 }) {
   return (
@@ -2679,6 +2783,7 @@ function F({
       <input
         className="input"
         type={type}
+        inputMode={inputMode}
         value={value}
         onChange={(event) => set(event.target.value)}
         required={req}
