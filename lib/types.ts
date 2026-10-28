@@ -83,6 +83,20 @@ export type ServiceOffering = {
   updatedAt: string;
 };
 
+export type PortfolioItem = {
+  id: Id;
+  title: string;
+  description: string;
+  /** Private Vercel Blob path; never returned by public portfolio routes. */
+  blobPathname: string;
+  contentType: string;
+  originalFilename: string;
+  sizeBytes: number;
+  published: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type ClientRequest = {
   id: Id;
   contactId: Id;
@@ -451,12 +465,14 @@ export type WorkspaceState = {
     locale: string;
     timezone: string;
     workspaceName: string;
+    instagramUrl?: string;
   };
   settings: WorkspaceSettings;
   contacts: Contact[];
   opportunities: Opportunity[];
   projects: Project[];
   serviceCatalog: ServiceOffering[];
+  portfolioItems: PortfolioItem[];
   clientRequests: ClientRequest[];
   videoBriefs: VideoBrief[];
   financialAccounts: FinancialAccount[];

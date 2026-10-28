@@ -13,6 +13,7 @@ const allowed = new Set([
   'opportunities',
   'projects',
   'serviceCatalog',
+  'portfolioItems',
   'videoBriefs',
   'financialAccounts',
   'transactions',
