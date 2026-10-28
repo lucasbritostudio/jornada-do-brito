@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { del, head, issueSignedToken, list, presignUrl } from '@vercel/blob';
+import { del, issueSignedToken, list, presignUrl } from '@vercel/blob';
 import { requireAuthenticated } from '@/lib/auth';
 import { audit, getState } from '@/lib/store';
 import { mutateStateSafely } from '@/lib/state-mutation';
@@ -96,8 +96,10 @@ export async function POST(request: Request) {
       }
 
       stage = 'confirmar arquivo enviado';
-      const metadata = await head(pathname);
-      if (metadata.size > 1024 * 1024 * 1024 || metadata.contentType !== videoTypes[extension]) {
+      const stored = await list({ prefix: `jornada/portfolio/${id}/`, limit: 1000 });
+      const metadata = stored.blobs.find((blob) => blob.pathname === pathname);
+      if (!metadata) throw new Error('PORTFOLIO_BLOB_NOT_FOUND');
+      if (metadata.size > 1024 * 1024 * 1024) {
         throw new Error('INVALID_VIDEO');
       }
 
@@ -111,7 +113,7 @@ export async function POST(request: Request) {
           previous.description = description;
           previous.published = published;
           previous.originalFilename = originalFilename;
-          previous.contentType = metadata.contentType;
+          previous.contentType = videoTypes[extension];
           previous.sizeBytes = metadata.size;
           previous.updatedAt = now;
           return;
@@ -121,7 +123,7 @@ export async function POST(request: Request) {
           title,
           description,
           blobPathname: pathname,
-          contentType: metadata.contentType,
+          contentType: videoTypes[extension],
           originalFilename,
           sizeBytes: metadata.size,
           published,
@@ -169,6 +171,7 @@ export async function POST(request: Request) {
     if (message === 'UNAUTHORIZED') return NextResponse.json({ error: 'Entre na área do proprietário para alterar o portfólio.' }, { status: 401 });
     if (message === 'INVALID_INSTAGRAM_URL') return NextResponse.json({ error: 'Informe um link válido do Instagram, começando com https://.' }, { status: 400 });
     if (message === 'PORTFOLIO_ITEM_NOT_FOUND') return NextResponse.json({ error: 'Esse vídeo não está no portfólio.' }, { status: 404 });
+    if (message === 'PORTFOLIO_BLOB_NOT_FOUND') return NextResponse.json({ error: 'Não encontrei o arquivo no armazenamento. Se o envio ainda não terminou, tente novamente.' }, { status: 404 });
     if (message === 'PORTFOLIO_ID_CONFLICT') return NextResponse.json({ error: 'Este envio entrou em conflito com outro trabalho. Atualize a lista antes de continuar.' }, { status: 409 });
     if (message === 'STATE_WRITE_CONFLICT') return NextResponse.json({ error: 'Houve outra alteração ao mesmo tempo. Tente novamente.' }, { status: 409 });
     if (message === 'INVALID_INPUT') return NextResponse.json({ error: 'Confira os campos antes de salvar.' }, { status: 400 });
