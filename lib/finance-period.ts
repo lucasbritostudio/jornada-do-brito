@@ -11,6 +11,8 @@ export type MonthFinanceSummary = {
   plannedIncomeCents: number;
   plannedExpenseCents: number;
   hasClearedTransactions: boolean;
+  incomeByCategory: Array<{ category: string; amountCents: number }>;
+  expenseByCategory: Array<{ category: string; amountCents: number }>;
 };
 
 /** Separates completed cash movements from estimates for the current month. */
@@ -31,6 +33,17 @@ export function summarizeCurrentMonth(
 
   const incomeCents = sum(cleared, 'income');
   const expenseCents = sum(cleared, 'expense');
+  const byCategory = (type: Transaction['type']) => {
+    const totals = new Map<string, number>();
+    for (const item of cleared.filter((entry) => entry.type === type)) {
+      const category = item.category?.trim() || 'Sem categoria';
+      totals.set(category, (totals.get(category) || 0) + item.amountCents);
+    }
+    return Array.from(totals, ([category, amountCents]) => ({
+      category,
+      amountCents,
+    })).sort((a, b) => b.amountCents - a.amountCents);
+  };
 
   return {
     incomeCents,
@@ -39,12 +52,16 @@ export function summarizeCurrentMonth(
     plannedIncomeCents: sum(planned, 'income'),
     plannedExpenseCents: sum(planned, 'expense'),
     hasClearedTransactions: cleared.length > 0,
+    incomeByCategory: byCategory('income'),
+    expenseByCategory: byCategory('expense'),
   };
 }
 
 export function summarizeAvailableCash(
   accounts: FinancialAccount[],
   obligations: FinancialObligation[],
+  now = new Date(),
+  days = 30,
 ) {
   const cashAccounts = accounts.filter(
     (account) =>
@@ -55,8 +72,16 @@ export function summarizeAvailableCash(
       total + (account.currentBalanceCents ?? account.openingBalanceCents),
     0,
   );
+  const through = new Date(now);
+  through.setHours(23, 59, 59, 999);
+  through.setDate(through.getDate() + days);
   const plannedObligationsCents = obligations
-    .filter((item) => item.status === 'planned')
+    .filter((item) => {
+      if (item.status !== 'planned') return false;
+      if (!item.dueDate) return true;
+      const due = new Date(`${item.dueDate.slice(0, 10)}T12:00:00`);
+      return !Number.isNaN(due.getTime()) && due <= through;
+    })
     .reduce((total, item) => total + item.amountCents, 0);
 
   return {
