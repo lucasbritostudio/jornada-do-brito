@@ -4,6 +4,7 @@ import { getState, saveState, audit } from '@/lib/store';
 import type { WorkspaceState } from '@/lib/types';
 
 import { isBlobConflict } from '@/lib/blob-conflict';
+import { mutateStateSafely } from '@/lib/state-mutation';
 
 export const runtime = 'nodejs';
 
@@ -42,6 +43,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const errorId = crypto.randomUUID();
   try {
     await requireAuthenticated();
     const body = await req.json();
@@ -86,6 +88,30 @@ export async function POST(req: Request) {
         { error: 'Coleção inválida.' },
         { status: 400 },
       );
+    }
+
+    // Catalog edits are safe to replay by ID. Read the latest Blob snapshot
+    // for each attempt so an unrelated save from another screen cannot make
+    // this new service disappear or fail with a stale version.
+    if (collection === 'serviceCatalog' && body.operation === 'upsert') {
+      const incoming = body.record && typeof body.record === 'object' ? body.record : {};
+      const recordId = String(incoming.id || crypto.randomUUID());
+      await mutateStateSafely((latest) => {
+        const records = latest.serviceCatalog;
+        const at = new Date().toISOString();
+        const record = { ...incoming, id: recordId, updatedAt: at };
+        if (!record.createdAt) record.createdAt = at;
+        const idx = records.findIndex((item) => item.id === recordId);
+        if (idx >= 0) records[idx] = { ...records[idx], ...record };
+        else records.unshift(record as (typeof records)[number]);
+        audit(latest, {
+          action: idx >= 0 ? 'record.update' : 'record.create',
+          collection,
+          recordId,
+          summary: String(record.name || record.description || 'Serviço do catálogo'),
+        });
+      });
+      return NextResponse.json({ ok: true });
     }
 
     const arr = (state as unknown as Record<string, unknown[]>)[collection];
@@ -140,6 +166,11 @@ export async function POST(req: Request) {
       await saveState(state as WorkspaceState),
     );
   } catch (error) {
+    console.error('[api/state] save failed', {
+      errorId,
+      name: error instanceof Error ? error.name : 'UnknownError',
+      message: error instanceof Error ? error.message.slice(0, 400) : 'Unknown error',
+    });
     if (isBlobConflict(error)) {
       return NextResponse.json(
         { error: 'Outra alteração foi salva ao mesmo tempo. Atualize e tente novamente.' },
@@ -152,8 +183,14 @@ export async function POST(req: Request) {
         { status: 401 },
       );
     }
+    if (error instanceof Error && error.message === 'STATE_WRITE_CONFLICT') {
+      return NextResponse.json(
+        { error: 'O catálogo está recebendo outra alteração. Atualize a página e tente novamente.', errorId },
+        { status: 409 },
+      );
+    }
     return NextResponse.json(
-      { error: 'Não foi possível salvar.' },
+      { error: 'Não foi possível salvar.', errorId },
       { status: 500 },
     );
   }
