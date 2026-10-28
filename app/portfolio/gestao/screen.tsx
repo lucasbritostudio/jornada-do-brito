@@ -2,6 +2,8 @@
 
 import { upload } from '@vercel/blob/client';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AutomaticCovers, CoverEditor, type SavedCover } from './covers';
+import { createAutomaticCover, saveVideoCover, type VideoCover } from '../video-cover';
 
 type PortfolioItem = {
   id: string;
@@ -14,6 +16,8 @@ type PortfolioItem = {
   createdAt: string;
   updatedAt: string;
   previewUrl: string;
+  coverUrl?: string;
+  coverFrameSeconds?: number;
 };
 type PendingUpload = {
   id: string;
@@ -63,7 +67,11 @@ export default function PortfolioManager() {
   const [editing, setEditing] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  const [coverItem, setCoverItem] = useState<PortfolioItem | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const coverSaved = useCallback((id: string, cover: SavedCover) => {
+    setItems(current => current.map(item => item.id === id ? { ...item, ...cover } : item));
+  }, []);
 
   const refresh = useCallback(async () => {
     const response = await fetch('/api/portfolio/manage', { cache: 'no-store' });
@@ -104,7 +112,7 @@ export default function PortfolioManager() {
     else sessionStorage.removeItem(PENDING_UPLOAD_KEY);
   }, [pendingUpload]);
 
-  async function finishUpload(pending: PendingUpload) {
+  async function finishUpload(pending: PendingUpload, cover?: VideoCover | null) {
     const response = await fetch('/api/portfolio/manage', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -113,12 +121,19 @@ export default function PortfolioManager() {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'O arquivo foi enviado, mas não consegui salvar o cadastro.');
 
+    let coverFailed = cover === null;
+    if (cover) {
+      try { await saveVideoCover(pending.id, cover, true); }
+      catch { coverFailed = true; }
+    }
+
     setPendingUpload(null);
     setTitle(''); setDescription(''); setFile(null); setPublishAfterUpload(false); setProgress(0);
     if (fileInput.current) fileInput.current.value = '';
     try {
       await refresh();
       setMessage(pending.published ? 'Vídeo salvo e publicado no portfólio.' : 'Vídeo salvo. Ele está oculto até você publicar.');
+      if (coverFailed) setError('O vídeo está salvo. A capa não ficou pronta; use “Escolher capa” para tentar novamente.');
     } catch {
       setMessage('Vídeo salvo. Atualize a lista para conferir.');
     }
@@ -157,6 +172,8 @@ export default function PortfolioManager() {
     setBusy(true); setUploadPhase('uploading'); setProgress(0); setError(''); setMessage('Enviando o arquivo…');
     try {
       const id = crypto.randomUUID();
+      // Create the cover from the local file while its upload is in progress.
+      const automaticCover = createAutomaticCover(selectedFile).catch(() => null);
       const blob = await upload(`jornada/portfolio/${id}/${filename}`, selectedFile, {
         access: 'private',
         contentType: selectedFile.type,
@@ -177,7 +194,7 @@ export default function PortfolioManager() {
       setProgress(100);
       setUploadPhase('saving');
       setMessage('Arquivo enviado. Agora estou salvando o vídeo no portfólio…');
-      await finishUpload(pending);
+      await finishUpload(pending, await automaticCover);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Não foi possível enviar o vídeo.');
       setMessage('');
@@ -287,11 +304,13 @@ export default function PortfolioManager() {
 
     <section className="portfolio-admin-card">
       <div className="portfolio-section-head"><div><h2>Vídeos cadastrados</h2><p>{items.length} trabalho(s) no portfólio</p></div></div>
+      {!loading && <AutomaticCovers items={items} onSaved={coverSaved} />}
       {loading ? <p>Carregando seus vídeos…</p> : !items.length ? <p>Você ainda não enviou nenhum vídeo.</p> : <div className="portfolio-admin-grid">{items.map((item) => <article className="portfolio-admin-item" key={item.id}>
-        <video controls preload="metadata" playsInline src={item.previewUrl} />
-        {editing === item.id ? <div className="portfolio-form"><label>Título<input maxLength={120} value={editTitle} onChange={(e) => setEditTitle(e.target.value)} /></label><label>Descrição<textarea maxLength={1000} rows={3} value={editDescription} onChange={(e) => setEditDescription(e.target.value)} /></label><div className="portfolio-actions"><button className="portfolio-primary" disabled={busy} onClick={() => updateItem(item)}>Salvar edição</button><button type="button" className="portfolio-secondary" onClick={() => setEditing(null)}>Cancelar</button></div></div> : <><div className="portfolio-item-title"><div><h3>{item.title}</h3><span className={item.published ? 'portfolio-status published' : 'portfolio-status'}>{item.published ? 'Publicado' : 'Oculto'}</span></div><small>{moneySize(item.sizeBytes)} · {new Date(item.createdAt).toLocaleDateString('pt-BR')}</small></div><p>{item.description || 'Sem descrição.'}</p><div className="portfolio-actions"><button className="portfolio-secondary" onClick={() => startEdit(item)}>Editar detalhes</button><button className={item.published ? 'portfolio-secondary' : 'portfolio-primary'} disabled={busy} onClick={() => updateItem(item, !item.published)}>{item.published ? 'Ocultar' : 'Publicar'}</button><button className="portfolio-secondary" disabled={busy} onClick={() => deleteItem(item)}>Excluir</button></div></>}
+        <video controls preload="none" playsInline src={item.previewUrl} poster={item.coverUrl} aria-label={item.title} />
+        {editing === item.id ? <div className="portfolio-form"><label>Título<input maxLength={120} value={editTitle} onChange={(e) => setEditTitle(e.target.value)} /></label><label>Descrição<textarea maxLength={1000} rows={3} value={editDescription} onChange={(e) => setEditDescription(e.target.value)} /></label><div className="portfolio-actions"><button className="portfolio-primary" disabled={busy} onClick={() => updateItem(item)}>Salvar edição</button><button type="button" className="portfolio-secondary" onClick={() => setEditing(null)}>Cancelar</button></div></div> : <><div className="portfolio-item-title"><div><h3>{item.title}</h3><span className={item.published ? 'portfolio-status published' : 'portfolio-status'}>{item.published ? 'Publicado' : 'Oculto'}</span></div><small>{moneySize(item.sizeBytes)} · {new Date(item.createdAt).toLocaleDateString('pt-BR')}</small></div><p>{item.description || 'Sem descrição.'}</p><div className="portfolio-actions"><button type="button" className="portfolio-secondary" disabled={busy} onClick={() => { setCoverItem(item); setMessage(''); }}>Escolher capa</button><button className="portfolio-secondary" onClick={() => startEdit(item)}>Editar detalhes</button><button className={item.published ? 'portfolio-secondary' : 'portfolio-primary'} disabled={busy} onClick={() => updateItem(item, !item.published)}>{item.published ? 'Ocultar' : 'Publicar'}</button><button className="portfolio-secondary" disabled={busy} onClick={() => deleteItem(item)}>Excluir</button></div></>}
       </article>)}</div>}
     </section>
+    {coverItem && <CoverEditor item={coverItem} onSaved={(id, cover) => { coverSaved(id, cover); setMessage('Capa salva. Ela já aparece no portfólio.'); }} onClose={() => setCoverItem(null)} />}
     <footer className="portfolio-admin-footer"><a href="/servicos">Gerenciar serviços e preços no catálogo →</a></footer>
   </main>;
 }

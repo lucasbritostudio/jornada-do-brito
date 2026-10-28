@@ -71,5 +71,14 @@
 .portfolio-admin-item>.portfolio-form{padding:14px}.portfolio-actions{display:flex;gap:8px;flex-wrap:wrap;padding:0 14px 14px}.portfolio-form .portfolio-actions{padding:0}
 .portfolio-admin-item .portfolio-actions button{font:inherit}
 .portfolio-admin-footer{text-align:right;padding:12px 4px 36px}
+.portfolio-cover-status{color:#d7e59b;line-height:1.6;margin:0 0 20px}
+.portfolio-cover-dialog{box-sizing:border-box;width:min(540px,calc(100% - 24px));max-height:calc(100dvh - 24px);padding:22px;border:1px solid #45473d;border-radius:18px;background:#191a17;color:#f3f3ec;overflow:auto;font-family:Arial,Helvetica,sans-serif}
+.portfolio-cover-dialog::backdrop{background:rgb(0 0 0 / .8)}
+.portfolio-cover-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.portfolio-cover-heading h2{font-size:23px;margin:0 0 6px}.portfolio-cover-heading p{margin:0;color:#b8b9ae}
+.portfolio-cover-dialog>.portfolio-muted{font-size:14px;line-height:1.5}
+.portfolio-cover-dialog>video{display:block;width:auto;max-width:100%;height:min(44dvh,430px);aspect-ratio:9/16;margin:16px auto;background:#080908;object-fit:contain;border-radius:10px}
+.portfolio-cover-slider{display:grid;gap:10px;font-size:14px;font-weight:700}.portfolio-cover-slider input{width:100%;margin:6px 0;accent-color:#e8ff72;min-height:30px}
+.portfolio-cover-time{display:flex;align-items:flex-end;gap:12px;color:#b8b9ae;font-size:12px}.portfolio-cover-time label{display:grid;gap:6px}.portfolio-cover-time input{width:105px;border:1px solid #45473d;border-radius:8px;background:#10110f;color:#f3f3ec;padding:9px;font:inherit}.portfolio-cover-time>span{padding-bottom:10px}
+.portfolio-cover-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:10px;margin-top:20px}.portfolio-cover-dialog button:disabled{opacity:.55;cursor:wait}
 @media(max-width:700px){.portfolio-admin-head{align-items:flex-start;flex-direction:column}.portfolio-contact-form{align-items:stretch;flex-direction:column}.portfolio-contact-form button{align-self:flex-start}.portfolio-admin-card{padding:17px}.portfolio-item-title{flex-direction:column}.portfolio-item-title small{white-space:normal}}
 @media(max-width:700px){.portfolio-recovery-list>div{align-items:flex-start;flex-direction:column}}

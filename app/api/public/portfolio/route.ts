@@ -25,6 +25,11 @@ export async function GET() {
         access: 'private',
         validUntil,
       });
+      let coverUrl: string | undefined;
+      if (item.coverPathname?.startsWith(`jornada/portfolio-covers/${item.id}/`)) {
+        const token = await issueSignedToken({ pathname: item.coverPathname, operations: ['get'], validUntil });
+        coverUrl = (await presignUrl(token, { operation: 'get', pathname: item.coverPathname, access: 'private', validUntil })).presignedUrl;
+      }
       return {
         id: item.id,
         title: item.title,
@@ -33,6 +38,7 @@ export async function GET() {
         sizeBytes: item.sizeBytes,
         createdAt: item.createdAt,
         videoUrl: presignedUrl,
+        coverUrl,
         playToken: signPortfolioPlayToken({ id: item.id, title: item.title, sizeBytes: item.sizeBytes }),
       };
     }));

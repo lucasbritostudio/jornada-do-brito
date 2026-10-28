@@ -44,10 +44,15 @@ export async function GET() {
       console.warn('[portfolio/manage] could not scan pending uploads', { name: error instanceof Error ? error.name : 'UnknownError' });
     }
     const validUntil = Date.now() + 24 * 60 * 60 * 1000;
-    const items = await Promise.all(state.portfolioItems.map(async ({ blobPathname, ...item }) => {
+    const items = await Promise.all(state.portfolioItems.map(async ({ blobPathname, coverPathname, ...item }) => {
       const token = await issueSignedToken({ pathname: blobPathname, operations: ['get'], validUntil });
       const { presignedUrl } = await presignUrl(token, { operation: 'get', pathname: blobPathname, access: 'private', validUntil });
-      return { ...item, previewUrl: presignedUrl };
+      let coverUrl: string | undefined;
+      if (coverPathname?.startsWith(`jornada/portfolio-covers/${item.id}/`)) {
+        const coverToken = await issueSignedToken({ pathname: coverPathname, operations: ['get'], validUntil });
+        coverUrl = (await presignUrl(coverToken, { operation: 'get', pathname: coverPathname, access: 'private', validUntil })).presignedUrl;
+      }
+      return { ...item, previewUrl: presignedUrl, coverUrl };
     }));
     return NextResponse.json({ items, instagramUrl: state.profile.instagramUrl || '', unregisteredUploads }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
@@ -142,7 +147,7 @@ export async function POST(request: Request) {
       if (!id) throw new Error('INVALID_INPUT');
       const item = (await getState()).portfolioItems.find((entry) => entry.id === id);
       if (!item || !item.blobPathname.startsWith('jornada/portfolio/')) throw new Error('PORTFOLIO_ITEM_NOT_FOUND');
-      await del(item.blobPathname);
+      await del(item.coverPathname?.startsWith(`jornada/portfolio-covers/${id}/`) ? [item.blobPathname, item.coverPathname] : item.blobPathname);
       await mutateStateSafely((state) => {
         state.portfolioItems = state.portfolioItems.filter((entry) => entry.id !== id);
         audit(state, { action: 'portfolio.item.delete', collection: 'portfolioItems', recordId: id, summary: item.title });

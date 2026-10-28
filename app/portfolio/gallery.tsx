@@ -9,6 +9,7 @@ type PublicItem = {
   contentType: string;
   createdAt: string;
   videoUrl: string;
+  coverUrl?: string;
   playToken: string;
 };
 
@@ -51,7 +52,20 @@ export default function PortfolioGallery() {
           const useCached = cached && sameBlob && cached.expiresAt > now + 60 * 60 * 1000;
           const videoUrl = useCached ? cached.url : item.videoUrl;
           nextCache[item.id] = useCached ? cached : { url: videoUrl, expiresAt: now + URL_REUSE_MS };
-          return { ...item, videoUrl };
+          let coverUrl = item.coverUrl;
+          if (coverUrl) {
+            const key = `cover:${item.id}`;
+            const cachedCover = cachedUrls[key];
+            let sameCover = false;
+            try {
+              const fresh = new URL(coverUrl), previous = new URL(cachedCover?.url || '');
+              sameCover = fresh.origin === previous.origin && fresh.pathname === previous.pathname;
+            } catch { /* A new or invalid cached cover needs a fresh signed URL. */ }
+            const reuseCover = cachedCover && sameCover && cachedCover.expiresAt > now + 60 * 60 * 1000;
+            coverUrl = reuseCover ? cachedCover.url : coverUrl;
+            nextCache[key] = reuseCover ? cachedCover : { url: coverUrl, expiresAt: now + URL_REUSE_MS };
+          }
+          return { ...item, videoUrl, coverUrl };
         });
         try { localStorage.setItem(URL_CACHE_KEY, JSON.stringify(nextCache)); } catch { /* Storage may be disabled; fresh signed links still work. */ }
         setItems(stableItems);
@@ -73,7 +87,7 @@ export default function PortfolioGallery() {
 
     {error ? <p className="portfolio-error" role="alert">{error}</p> : loading ? <p className="portfolio-muted">Carregando trabalhos…</p> : items.length === 0 ? <section className="portfolio-empty"><h2>Portfólio em preparação</h2><p>Os trabalhos serão exibidos aqui assim que forem publicados.</p></section> : <section className="portfolio-gallery" aria-label="Trabalhos em vídeo">
       {items.map((item) => <article className="portfolio-work" key={item.id}>
-        <video controls playsInline preload="none" src={item.videoUrl} aria-label={item.title} onTimeUpdate={(event) => {
+        <video controls playsInline preload="none" poster={item.coverUrl} src={item.videoUrl} aria-label={item.title} onTimeUpdate={(event) => {
           const video = event.currentTarget;
           if (video.currentTime < 5 || video.paused) return;
           if (video.dataset.metricSent === 'true') return;

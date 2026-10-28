@@ -52,3 +52,13 @@
 O vídeo de 125,4 MB chegou ao Blob. A falha comprovada nos logs era `Precondition failed: ETag mismatch` ao gravar state.json. A rotina de conflito comparava apenas error.name, mas a classe real do SDK mantém o nome Error. A correção reconhece a classe real e usa versões da API de metadados, verificadas antes e depois da leitura sem cache, para as gravações condicionais. As proteções contra sobrescrita continuam ativas.
 
 A mensagem antiga de salvamento é limpa quando ocorre erro. Foram aprovados 46 testes direcionados, incluindo cadastro de 125 MB, idempotência, concorrência durante leitura e gravação, autenticação e limite de 1 GB. Build aprovado.
+
+## 28/10/2026 — Vídeos verticais e capas
+
+- Os vídeos são apresentados em quadros 9:16, com a imagem inteira preservada.
+- Novos envios geram uma capa JPEG no navegador a partir do arquivo local, durante o envio. A capa é pequena (540 × 960), sem enviar o vídeo para outro serviço.
+- Ao abrir a gestão, vídeos antigos sem capa recebem uma automaticamente, um por vez. O navegador lê o trecho necessário do vídeo; isso pode consumir tráfego. Se um arquivo não puder ser lido, a gestão informa e permite tentar em “Escolher capa”.
+- “Escolher capa” abre o vídeo com barra de tempo, reprodução/pausa e ajuste em segundos. A imagem exibida ao salvar vira a capa. O proprietário pode trocar depois, inclusive em trabalhos já publicados.
+- As capas ficam no Blob privado em `jornada/portfolio-covers/{id}/`. A página pública recebe somente links assinados das capas de trabalhos publicados e continua sem carregar o vídeo antes da reprodução.
+- A troca salva a nova referência antes de remover a capa antiga. Um trabalho automático nunca substitui uma capa já escolhida pelo proprietário. Falha na capa não desfaz o cadastro do vídeo.
+- Validação local: build e 12 testes direcionados aprovados (capas e cadastro de vídeos), incluindo autenticação, validação de imagem, concorrência, limpeza de upload sem referência e exposição pública.

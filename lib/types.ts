@@ -89,6 +89,9 @@ export type PortfolioItem = {
   description: string;
   /** Private Vercel Blob path; never returned by public portfolio routes. */
   blobPathname: string;
+  /** Private JPEG cover generated from a video frame. */
+  coverPathname?: string;
+  coverFrameSeconds?: number;
   contentType: string;
   originalFilename: string;
   sizeBytes: number;
