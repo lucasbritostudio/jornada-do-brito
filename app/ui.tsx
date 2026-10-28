@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 21422)
-Total output lines: 2831
-
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
@@ -1271,7 +1268,163 @@ function Finance({
                   {d.expenseByCategory.map((item: { category: string; amountCents: number }) => (
                     <div className="row" key={item.category}>
                       <span>{item.category}</span>
-…1422 tokens truncated…     <th>Data</th>
+                      <strong>{brl(item.amountCents)}</strong>
+                    </div>
+                  ))}
+                </div>
+              ) : <div className="empty">Sem saídas confirmadas neste mês.</div>}
+            </div>
+          </div>
+          <div className="metric-sub">
+            Ao lançar uma entrada, use a origem: Pessoal, Filmmaker, Sistemas ou Outra.
+          </div>
+        </div>
+
+        <div className="card" style={{ marginBottom: 16 }}>
+          <h3>Vencidas e próximas — 30 dias</h3>
+          {upcomingObligations.items.length ? (
+            <div className="list">
+              {upcomingObligations.items.map((item) => {
+                return (
+                  <div className="row" key={item.id}>
+                    <div>
+                      <div className="row-title">{item.title}</div>
+                      <div className="row-sub">
+                        {item.kind} · {item.overdue ? 'Vencida' : `Vence ${dateLabel(item.dueDate)}`}
+                      </div>
+                    </div>
+                    <strong>{brl(item.amountCents)}</strong>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="empty">Nenhuma conta planejada com vencimento nos próximos 30 dias.</div>
+          )}
+          {upcomingObligations.withoutDueDateCount > 0 && (
+            <div className="metric-sub">
+              {upcomingObligations.withoutDueDateCount} conta(s) planejada(s) sem data de vencimento.
+            </div>
+          )}
+        </div>
+
+        <div className="card">
+          <div className="row" style={{ paddingTop: 0 }}>
+            <h3>Contas e saldos registrados</h3>
+            <button
+              className="btn secondary small"
+              type="button"
+              onClick={() => openAccountForm()}
+            >
+              Adicionar conta/saldo
+            </button>
+          </div>
+          {accountFormOpen && (
+            <form className="form-grid" onSubmit={saveAccount} style={{ marginBottom: 18 }}>
+              <F
+                label="Nome da conta"
+                value={accountName}
+                set={setAccountName}
+                req
+              />
+              <div className="field">
+                <label>Tipo</label>
+                <select
+                  className="select"
+                  value={accountType}
+                  onChange={(event) => setAccountType(event.target.value as FinancialAccount['type'])}
+                >
+                  {(['bank', 'cash', 'wallet', 'own_collateral'] as const).map((type) => (
+                    <option key={type} value={type}>{accountTypeLabel[type]}</option>
+                  ))}
+                </select>
+              </div>
+              <F
+                label="Saldo atual (R$)"
+                value={accountBalance}
+                set={setAccountBalance}
+                inputMode="decimal"
+                req
+              />
+              <F
+                label="Data deste saldo"
+                type="date"
+                value={accountBalanceDate}
+                set={setAccountBalanceDate}
+                req
+              />
+              <div className="full toolbar">
+                <button className="btn" type="submit">
+                  {editingAccountId ? 'Atualizar saldo' : 'Salvar conta'}
+                </button>
+                <button
+                  className="btn secondary"
+                  type="button"
+                  onClick={() => setAccountFormOpen(false)}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          )}
+          {state.financialAccounts.length ? (
+            <div className="list">
+              {state.financialAccounts.map((account) => (
+                <div
+                  className="row"
+                  key={account.id}
+                >
+                  <div>
+                    <div className="row-title">
+                      {account.name}
+                    </div>
+                    <div className="row-sub">
+                      {accountTypeLabel[account.type] || account.type}
+                      {account.balanceAsOf
+                        ? ` · posição de ${dateLabel(account.balanceAsOf)}`
+                        : ''}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <strong>
+                      {brl(
+                        account.currentBalanceCents ??
+                          account.openingBalanceCents,
+                      )}
+                    </strong>
+                    {!!account.rescuableBalanceCents && (
+                      <div className="row-sub">
+                        {brl(account.rescuableBalanceCents)} resgatável
+                      </div>
+                    )}
+                    <button
+                      className="btn secondary small"
+                      type="button"
+                      style={{ marginTop: 8 }}
+                      onClick={() => openAccountForm(account)}
+                    >
+                      Atualizar saldo
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="empty">
+              Os saldos reais serão carregados na migração privada.
+            </div>
+          )}
+        </div>
+        </>
+      )}
+
+      {view === 'transactions' && (
+        <div className="card">
+          {state.transactions.length ? (
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Data</th>
                   <th>Descrição</th>
                   <th>Categoria</th>
                   <th>Situação</th>
