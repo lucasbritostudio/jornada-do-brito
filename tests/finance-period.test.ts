@@ -41,6 +41,9 @@ test('separa movimentações realizadas das previstas no mês atual', () => {
   assert.equal(summary.plannedIncomeCents, 30000);
   assert.equal(summary.plannedExpenseCents, 8000);
   assert.equal(summary.hasClearedTransactions, true);
+  assert.deepEqual(summary.incomeByCategory, [
+    { category: 'Sem categoria', amountCents: 50000 },
+  ]);
 });
 
 test('indica quando ainda não há movimentação confirmada', () => {
@@ -92,7 +95,9 @@ test('saldo disponível subtrai só contas planejadas de dinheiro líquido', () 
       obligation({ id: 'planned', amountCents: 25000 }),
       obligation({ id: 'review', amountCents: 10000, status: 'review' }),
       obligation({ id: 'paid', amountCents: 5000, status: 'paid' }),
+      obligation({ id: 'future', amountCents: 40000, dueDate: '2027-01-10' }),
     ],
+    new Date('2026-10-28T12:00:00.000Z'),
   );
 
   assert.equal(summary.bankCashCents, 105000);
