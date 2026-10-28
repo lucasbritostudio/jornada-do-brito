@@ -1,3 +1,4 @@
+import * as realBlobSdk from '@vercel/blob';
 import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
 import { resolve as resolvePath } from 'node:path';
@@ -14,6 +15,11 @@ class BlobPreconditionFailedError extends Error {
 }
 
 mock.module('@vercel/blob', { namedExports: {
+    ...realBlobSdk,
+    head: async (pathname: string) => {
+      if (!blobs.has(pathname)) throw new realBlobSdk.BlobNotFoundError();
+      return { etag: etags.get(pathname) };
+    },
   get: async (path: string) => {
     const content = blobs.get(path);
     if (content === undefined) return null;

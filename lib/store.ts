@@ -1,4 +1,4 @@
-import { get, put, list } from '@vercel/blob';
+import { get, put, list, head, BlobNotFoundError } from '@vercel/blob';
 import type { WorkspaceState, AuditEntry } from './types';
 import { refreshProfessionalPatterns } from './patterns';
 import { isBlobConflict } from './blob-conflict';
@@ -141,7 +141,27 @@ export function upgradeState(raw: unknown): WorkspaceState {
 
 const stateVersions = new WeakMap<WorkspaceState, string | null>();
 
-async function readVersionedJson<T>(pathname: string): Promise<{ value: T; etag: string } | null> {
+async function readVersionedJson<T>(pathname: string, storageVersion = false): Promise<{ value: T; etag: string } | null> {
+  if (storageVersion) {
+    // HTTP delivery ETags can differ from storage metadata ETags. Conditional
+    // writes must use the storage version. Read metadata on both sides of the
+    // uncached content read, so a concurrent write cannot attach a newer version
+    // to an older snapshot.
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      let before;
+      try { before = await head(pathname); }
+      catch (error) { if (error instanceof BlobNotFoundError) return null; throw error; }
+      const result = await get(pathname, { access: 'private', useCache: false });
+      if (!result) continue;
+      const value = await new Response(result.stream).json() as T;
+      let after;
+      try { after = await head(pathname); }
+      catch (error) { if (error instanceof BlobNotFoundError) continue; throw error; }
+      if (!before.etag || !after.etag) throw new Error('BLOB_ETAG_MISSING');
+      if (before.etag === after.etag) return { value, etag: before.etag };
+    }
+    throw new Error('STATE_WRITE_CONFLICT');
+  }
   // Bypass private Blob CDN cache before conditional writes.
   const result = await get(pathname, { access: 'private', useCache: false });
   if (!result) return null;
@@ -224,7 +244,7 @@ export async function rotateAuthPassword(input: {
 }
 
 export async function getState(): Promise<WorkspaceState> {
-  const saved = await readVersionedJson<WorkspaceState>(STATE_PATH);
+  const saved = await readVersionedJson<WorkspaceState>(STATE_PATH, true);
   if (saved) {
     const upgraded = upgradeState(saved.value);
     // Defer migration until a version-checked write; GET is read-only.
@@ -247,7 +267,7 @@ export async function getState(): Promise<WorkspaceState> {
     // Another request might have created the state while we were reading.
     // Only recover by observing an actual existing state; never swallow a
     // network, permission or malformed-JSON failure.
-    const existing = await readVersionedJson<WorkspaceState>(STATE_PATH);
+    const existing = await readVersionedJson<WorkspaceState>(STATE_PATH, true);
     if (!existing) throw error;
     const upgraded = upgradeState(existing.value);
     stateVersions.set(upgraded, existing.etag);
