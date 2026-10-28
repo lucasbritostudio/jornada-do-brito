@@ -36,6 +36,8 @@ type QuickType =
   | 'expense'
   | 'income'
   | 'debt'
+  | 'receivable'
+  | 'obligation'
   | 'task'
   | 'goal'
   | 'inbox'
@@ -2306,8 +2308,30 @@ function QuickCapture({
         occurredOn: value('date') || now.slice(0, 10),
         category: value('category'),
         description: value('description'),
-        status: 'cleared',
+        status: value('status') || 'cleared',
         certainty: 'confirmed',
+      });
+    }
+
+    if (type === 'receivable') {
+      await save('receivables', {
+        title: value('title'),
+        amountCents: moneyToCents(value('amount')),
+        certainty: value('certainty') || 'confirmed',
+        status: 'pending',
+        expectedOn: value('date') || undefined,
+        notes: value('description') || undefined,
+      });
+    }
+
+    if (type === 'obligation') {
+      await save('obligations', {
+        title: value('title'),
+        amountCents: moneyToCents(value('amount')),
+        kind: value('kind') || 'personal',
+        status: 'planned',
+        dueDate: value('date') || undefined,
+        essentiality: value('essentiality') || 'review',
       });
     }
 
@@ -2396,6 +2420,8 @@ function QuickCapture({
     expense: 'Gasto',
     income: 'Entrada',
     debt: 'Dívida',
+    receivable: 'A receber',
+    obligation: 'Conta',
     task: 'Tarefa',
     goal: 'Objetivo',
     inbox: 'Anotação',
@@ -2490,6 +2516,17 @@ function QuickCapture({
               set={(next) => set('description', next)}
               req
             />
+            <div className="field full">
+              <label>Situação</label>
+              <select
+                className="select"
+                value={value('status') || 'cleared'}
+                onChange={(event) => set('status', event.target.value)}
+              >
+                <option value="cleared">Já aconteceu</option>
+                <option value="planned">Prevista</option>
+              </select>
+            </div>
           </div>
         )}
 
@@ -2527,6 +2564,53 @@ function QuickCapture({
                   set('description', event.target.value)
                 }
               />
+            </div>
+          </div>
+        )}
+
+        {type === 'receivable' && (
+          <div className="form-grid">
+            <F label="Quem vai pagar / descrição" value={value('title')} set={(next) => set('title', next)} req />
+            <F label="Valor previsto (R$)" value={value('amount')} set={(next) => set('amount', next)} req />
+            <F label="Data esperada" type="date" value={value('date')} set={(next) => set('date', next)} />
+            <div className="field">
+              <label>Confiança</label>
+              <select className="select" value={value('certainty') || 'confirmed'} onChange={(event) => set('certainty', event.target.value)}>
+                <option value="confirmed">Combinado</option>
+                <option value="estimate">Estimativa</option>
+                <option value="forecast">Possibilidade</option>
+              </select>
+            </div>
+            <div className="field full">
+              <label>Observação</label>
+              <textarea className="textarea" value={value('description')} onChange={(event) => set('description', event.target.value)} />
+            </div>
+          </div>
+        )}
+
+        {type === 'obligation' && (
+          <div className="form-grid">
+            <F label="Conta / compromisso" value={value('title')} set={(next) => set('title', next)} req />
+            <F label="Valor (R$)" value={value('amount')} set={(next) => set('amount', next)} req />
+            <F label="Vencimento" type="date" value={value('date')} set={(next) => set('date', next)} />
+            <div className="field">
+              <label>Tipo</label>
+              <select className="select" value={value('kind') || 'personal'} onChange={(event) => set('kind', event.target.value)}>
+                <option value="personal">Pessoal</option>
+                <option value="subscription">Assinatura</option>
+                <option value="card_bill">Fatura do cartão</option>
+                <option value="infrastructure">Sistema / infraestrutura</option>
+                <option value="debt_payment">Parcela de dívida</option>
+                <option value="other">Outro</option>
+              </select>
+            </div>
+            <div className="field">
+              <label>Importância</label>
+              <select className="select" value={value('essentiality') || 'review'} onChange={(event) => set('essentiality', event.target.value)}>
+                <option value="essential">Essencial</option>
+                <option value="review">Revisar</option>
+                <option value="optional">Opcional</option>
+              </select>
             </div>
           </div>
         )}
