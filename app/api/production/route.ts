@@ -2,9 +2,10 @@ import {NextResponse} from 'next/server';
 import {requireAuthenticated} from '@/lib/auth';
 import {readProduction,changeProduction} from '@/lib/production-store';
 import {isBlobConflict} from '@/lib/blob-conflict';
+import {audit,getState,saveState} from '@/lib/store';
 import {safeMoney,safeText,ensureValidDate,transitionAllowed,productionUrgency,
   deadlineFor,paymentSummary,overlappingEditions,overlappingBookings,isProductionFinished,
-  type Stage,type Work} from '@/lib/production';
+  type Stage,type Work,type ProductionData} from '@/lib/production';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -22,6 +23,8 @@ function err(e:unknown){
     FEE_NOT_AGREED:'Confirme o valor contratado antes de registrar pagamento.',
     OVERPAYMENT:'O pagamento excede o saldo contratado.',
     INVALID_INPUT:'Preencha os campos obrigatórios.',
+    ACCOUNT_REQUIRED:'Escolha a conta onde o dinheiro entrou.',
+    ACCOUNT_INVALID:'A conta escolhida não é uma conta ativa de dinheiro.',
     TOO_MANY:'Limite de registros atingido.',
     PAYMENT_DUPLICATE:'Pagamento já registrado.',
     SCHEDULE_REQUIRED:'Informe a data de gravação antes de marcar como agendada.'
@@ -34,6 +37,8 @@ export async function GET(){
   try{
     await requireAuthenticated();
     const data=await readProduction();
+    let financeSyncPending=false;
+    try{await syncPendingFinancePayments(data);}catch{financeSyncPending=true;}
     const now=new Date();
     return NextResponse.json({
       works:data.works.map(w=>({...w,clock:deadlineFor(w.capturedAt),
@@ -41,6 +46,7 @@ export async function GET(){
       conflicts:overlappingEditions(data.works),
       bookingConflicts:overlappingBookings(data.works),
       payments:data.payments,
+      financeSyncPending,
       snapshotAt:now.toISOString()
     },{headers:{'Cache-Control':'no-store'}});
   }catch(e){return err(e);}
@@ -143,6 +149,11 @@ export async function POST(req:Request){
       if(!/^[a-zA-Z0-9_-]{12,80}$/.test(operationId))throw new Error('INVALID_INPUT');
       const receivedAt=body.receivedAt?ensureValidDate(body.receivedAt):new Date().toISOString();
       if(new Date(receivedAt).getTime()>Date.now()+60_000)throw new Error('INVALID_DATE');
+      const accountId=safeText(body.accountId,100);
+      if(!accountId)throw new Error('ACCOUNT_REQUIRED');
+      const finance=await getState();
+      const account=finance.financialAccounts.find(a=>a.id===accountId&&a.active);
+      if(!account||!['cash','bank','wallet'].includes(account.type))throw new Error('ACCOUNT_INVALID');
       await changeProduction(s=>{
         if(s.payments.some(p=>p.id===operationId))return; // retry idempotente
         const work=s.works.find(w=>w.id===workId);
@@ -150,10 +161,52 @@ export async function POST(req:Request){
         if(work.agreedFeeCents===undefined||work.agreedFeeCents<=0)throw new Error('FEE_NOT_AGREED');
         const summary=paymentSummary(s,work);
         if(summary.remainingCents===null||amount>summary.remainingCents)throw new Error('OVERPAYMENT');
-        s.payments.unshift({id:operationId,workId,amountCents:amount,receivedAt,createdAt:new Date().toISOString()});
+        s.payments.unshift({id:operationId,workId,amountCents:amount,accountId,receivedAt,createdAt:new Date().toISOString()});
       });
+      // A produção e o financeiro usam arquivos separados. O lançamento
+      // financeiro usa uma chave determinística para reparar falhas sem duplicar.
+      try{await syncPaymentToFinance(operationId);}catch{
+        return NextResponse.json({error:'Recebimento salvo na Produção, mas falta atualizar o Financeiro. Atualize a tela para tentar conciliar; não registre o valor manualmente de novo.',financeSyncPending:true},{status:503});
+      }
       return NextResponse.json({ok:true});
     }
     return NextResponse.json({error:'Ação inválida.'},{status:400});
   }catch(e){return err(e);}
+}
+
+async function syncPaymentToFinance(paymentId:string){
+  for(let attempt=0;attempt<3;attempt++){
+    const production=await readProduction();
+    const payment=production.payments.find(p=>p.id===paymentId);
+    if(!payment)return;
+    const work=production.works.find(w=>w.id===payment.workId);
+    const state=await getState();
+    const importKey=`production-payment:${payment.id}`;
+    if(state.transactions.some(t=>t.importKey===importKey))return;
+    const account=payment.accountId&&state.financialAccounts.find(a=>a.id===payment.accountId&&['cash','bank','wallet'].includes(a.type));
+    if(!account)throw new Error('ACCOUNT_INVALID');
+    const now=new Date().toISOString();
+    const day=payment.receivedAt.slice(0,10);
+    const balance=account.currentBalanceCents??account.openingBalanceCents;
+    account.currentBalanceCents=balance+payment.amountCents;
+    account.balanceAsOf=day;
+    state.transactions.unshift({
+      id:crypto.randomUUID(),accountId:account.id,type:'income',amountCents:payment.amountCents,
+      occurredOn:day,category:'Serviços',description:`Recebimento de serviço${work?`: ${work.title} — ${work.clientName}`:''}`,
+      ...(work?.contactId?{contactId:work.contactId}:{}),...(work?.projectId?{projectId:work.projectId}:{}),
+      status:'cleared',certainty:'confirmed',importKey,provenance:{kind:'system',label:'Pagamento da produção',ref:payment.id,updatedAt:now},createdAt:now,updatedAt:now
+    });
+    audit(state,{action:'finance.production_payment',collection:'transactions',recordId:payment.id,summary:`Recebimento de serviço: ${payment.amountCents} centavos`});
+    try{await saveState(state);return;}catch(error){if(!isBlobConflict(error)||attempt===2)throw error;}
+  }
+}
+
+async function syncPendingFinancePayments(production:ProductionData){
+  const candidates=production.payments.filter(p=>p.accountId);
+  if(!candidates.length)return;
+  const state=await getState();
+  const completed=new Set(state.transactions.map(t=>t.importKey).filter(Boolean));
+  for(const payment of candidates){
+    if(!completed.has(`production-payment:${payment.id}`))await syncPaymentToFinance(payment.id);
+  }
 }

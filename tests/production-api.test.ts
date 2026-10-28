@@ -8,6 +8,7 @@ const blobs=new Map<string,string>();
 const etags=new Map<string,string>();
 let writeCount=0;
 let authenticated=true;
+let financeState:any;
 class BlobPreconditionFailedError extends Error {
   name='BlobPreconditionFailedError';
 }
@@ -15,6 +16,7 @@ class BlobAlreadyExistsError extends Error {
   name='BlobAlreadyExistsError';
 }
 mock.module('@vercel/blob',{namedExports:{
+  list:async()=>({blobs:[]}),
   get:async(path:string)=>{
     const content=blobs.get(path);
     if(content===undefined)return null;
@@ -33,6 +35,11 @@ mock.module('@vercel/blob',{namedExports:{
     return {etag:version};
   }
 }});
+mock.module(localModule('lib/store.ts'),{namedExports:{
+  getState:async()=>financeState,
+  saveState:async(state:any)=>{financeState=state;return state;},
+  audit:()=>{}
+}});
 mock.module(localModule('lib/auth.ts'),{namedExports:{
   requireAuthenticated:async()=>{
     if(!authenticated)throw new Error('UNAUTHORIZED');
@@ -43,6 +50,7 @@ const store=await import('../lib/production-store');
 
 function reset(){
   blobs.clear();etags.clear();writeCount=0;authenticated=true;
+  financeState={financialAccounts:[{id:'bank-1',name:'Conta principal',type:'bank',openingBalanceCents:100000,currentBalanceCents:100000,active:true}],transactions:[],audit:[]};
 }
 async function post(body:Record<string,unknown>){
   const response=await api.POST(new Request('https://localhost/api/production',{
@@ -92,10 +100,16 @@ test('envio à avaliação preservado; pagamento não duplica e não ultrapassa 
     assert.equal((await post({action:'stage',workId,stage})).status,200);
   assert.equal((await store.readProduction()).works[0].firstReviewSentAt,first);
   const pay={action:'payment',workId,operationId:'payment-synthetic-01',
-    amountCents:5000,confirmed:true};
+    amountCents:5000,accountId:'bank-1',confirmed:true};
   assert.equal((await post(pay)).status,200);
   assert.equal((await post(pay)).status,200);
   assert.equal((await store.readProduction()).payments.length,1);
+  assert.equal(financeState.transactions.length,1);
+  assert.equal(financeState.transactions[0].amountCents,5000);
+  assert.equal(financeState.financialAccounts[0].currentBalanceCents,105000);
+  assert.equal((await post(pay)).status,200);
+  assert.equal(financeState.transactions.length,1);
+  assert.equal(financeState.financialAccounts[0].currentBalanceCents,105000);
   assert.equal((await post({...pay,operationId:'payment-synthetic-02',amountCents:16000})).status,400);
   assert.equal((await post({...pay,operationId:'payment-synthetic-03',amountCents:15000})).status,200);
   assert.equal((await (await api.GET()).json()).works[0].payment.remainingCents,0);

@@ -3,10 +3,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import type {
   ConversationAutomationMode,
+  FinancialAccount,
   StudyArea,
   StudyEvent,
   WorkspaceState,
 } from '@/lib/types';
+import {
+  listUpcomingObligations,
+  summarizeAvailableCash,
+  summarizeCurrentMonth,
+} from '@/lib/finance-period';
+import { buildFinancePlan } from '@/lib/finance-plan';
 import {
   CINEMA_DECISION_RULE,
   VIDEO_PROFESSIONAL_METHOD,
@@ -30,6 +37,8 @@ type QuickType =
   | 'expense'
   | 'income'
   | 'debt'
+  | 'receivable'
+  | 'obligation'
   | 'task'
   | 'goal'
   | 'inbox'
@@ -61,6 +70,15 @@ const certaintyLabel: Record<string, string> = {
   forecast: 'Previsão',
   pending: 'Pendente',
   interpretation: 'Interpretação',
+};
+
+const accountTypeLabel: Record<FinancialAccount['type'], string> = {
+  cash: 'Dinheiro',
+  bank: 'Banco',
+  wallet: 'Carteira digital',
+  credit_card: 'Cartão de crédito',
+  own_collateral: 'Aplicação resgatável',
+  reserve: 'Reserva financeira',
 };
 
 export default function Dashboard() {
@@ -121,21 +139,32 @@ export default function Dashboard() {
     return true;
   }
 
+  async function financeAction(action: Record<string, unknown>) {
+    setBusy(true);
+    const response = await fetch('/api/finance/action', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(action),
+    });
+    const result = await response.json();
+    setBusy(false);
+    if (!response.ok) {
+      setNotice(result.error || 'Não foi possível salvar.');
+      return false;
+    }
+    setState(result.state);
+    setNotice('Salvo.');
+    return true;
+  }
+
   const derived = useMemo(() => {
     if (!state) return null;
 
-    const month = new Date().toISOString().slice(0, 7);
-    const transactions = state.transactions.filter(
-      (item) =>
-        item.status !== 'cancelled' &&
-        item.occurredOn.startsWith(month),
+    const monthFinance = summarizeCurrentMonth(state.transactions);
+    const financePlan = buildFinancePlan({ transactions: state.transactions, obligations: state.obligations, debts: state.debts, accounts: state.financialAccounts });
+    const cashSummary = summarizeAvailableCash(
+      state.financialAccounts,
+      state.obligations,
     );
-    const income = transactions
-      .filter((item) => item.type === 'income')
-      .reduce((sum, item) => sum + item.amountCents, 0);
-    const expense = transactions
-      .filter((item) => item.type === 'expense')
-      .reduce((sum, item) => sum + item.amountCents, 0);
 
     const structuralDebts = state.debts
       .filter(
@@ -143,18 +172,6 @@ export default function Dashboard() {
           item.status === 'active' && item.structural !== false,
       )
       .reduce((sum, item) => sum + item.currentBalanceCents, 0);
-
-    const bankCash = state.financialAccounts
-      .filter(
-        (item) =>
-          item.active &&
-          ['cash', 'bank', 'wallet'].includes(item.type),
-      )
-      .reduce(
-        (sum, item) =>
-          sum + (item.currentBalanceCents ?? item.openingBalanceCents),
-        0,
-      );
 
     const rescuable = state.financialAccounts
       .filter((item) => item.active)
@@ -170,10 +187,9 @@ export default function Dashboard() {
         }
         return sum;
       }, 0);
-
-    const obligations = state.obligations
-      .filter((item) => item.status === 'planned')
-      .reduce((sum, item) => sum + item.amountCents, 0);
+    const reserveAccounts = state.financialAccounts.filter((item) => item.active && item.type === 'reserve');
+    const reserveBalance = reserveAccounts.reduce((sum, item) => sum + (item.currentBalanceCents ?? item.openingBalanceCents), 0);
+    const reserveTarget = reserveAccounts.reduce((sum, item) => sum + (item.targetBalanceCents || 0), 0);
 
     const obligationsInReview = state.obligations
       .filter((item) => item.status === 'review')
@@ -204,13 +220,23 @@ export default function Dashboard() {
       );
 
     return {
-      income,
-      expense,
-      net: income - expense,
+      income: monthFinance.incomeCents,
+      expense: monthFinance.expenseCents,
+      net: monthFinance.netCents,
+      incomeByCategory: monthFinance.incomeByCategory,
+      expenseByCategory: monthFinance.expenseByCategory,
+      plannedIncome: monthFinance.plannedIncomeCents,
+      plannedExpense: monthFinance.plannedExpenseCents,
+      hasClearedMonthActivity: monthFinance.hasClearedTransactions,
       structuralDebts,
-      bankCash,
+      bankCash: cashSummary.bankCashCents,
+      availableBalance: cashSummary.availableCents,
+      hasCashBalance: cashSummary.hasCashAccount,
       rescuable,
-      obligations,
+      reserveBalance,
+      reserveTarget,
+      financePlan,
+      obligations: cashSummary.plannedObligationsCents,
       obligationsInReview,
       confirmedReceivables,
       estimatedReceivables,
@@ -273,6 +299,10 @@ export default function Dashboard() {
           <a href="/producao" style={{display:'flex',gap:11,alignItems:'center',width:'100%',padding:'11px 12px',borderRadius:12,background:'#1c312b',color:'#d4eb99',fontWeight:750,fontSize:13}}>
             <span className="dot-icon" aria-hidden="true" />
             Minha produção
+          </a>
+          <a href="/catalogo/gestao" style={{display:'flex',gap:11,alignItems:'center',width:'100%',padding:'11px 12px',borderRadius:12,background:'#252619',color:'#e8ff72',fontWeight:750,fontSize:13}}>
+            <span className="dot-icon" aria-hidden="true" />
+            Catálogo e pedidos
           </a>
           <a href="/desenvolvimento" style={{display:'flex',gap:11,alignItems:'center',width:'100%',padding:'11px 12px',borderRadius:12,background:'#202b35',color:'#d0e7e7',fontWeight:750,fontSize:13}}>
             <span className="dot-icon" aria-hidden="true" />
@@ -340,7 +370,7 @@ export default function Dashboard() {
           {tab === 'work' && <Work state={state} />}
 
           {tab === 'finance' && (
-            <Finance state={state} d={derived} />
+            <Finance state={state} d={derived} save={mutate} financeAction={financeAction} />
           )}
 
           {tab === 'journey' && (
@@ -372,6 +402,7 @@ export default function Dashboard() {
           </button>
         ))}
         <a href="/producao" style={{padding:'12px 9px',color:'#d4eb99',fontWeight:750,whiteSpace:'nowrap'}}>Produção</a>
+        <a href="/catalogo/gestao" style={{padding:'12px 9px',color:'#e8ff72',fontWeight:750,whiteSpace:'nowrap'}}>Catálogo</a>
         <a href="/desenvolvimento" style={{padding:'12px 9px',color:'#d0e7e7',fontWeight:750,whiteSpace:'nowrap'}}>Dev</a>
       </nav>
 
@@ -1073,9 +1104,13 @@ function Work({ state }: { state: WorkspaceState }) {
 function Finance({
   state,
   d,
+  save,
+  financeAction,
 }: {
   state: WorkspaceState;
   d: any;
+  save: (collection: string, record: any) => Promise<boolean>;
+  financeAction: (action: Record<string, unknown>) => Promise<boolean>;
 }) {
   const [view, setView] = useState<
     | 'overview'
@@ -1084,7 +1119,68 @@ function Finance({
     | 'receivables'
     | 'obligations'
   >('overview');
+  const [accountFormOpen, setAccountFormOpen] = useState(false);
+  const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
+  const [accountName, setAccountName] = useState('');
+  const [accountType, setAccountType] = useState<FinancialAccount['type']>('bank');
+  const [accountBalance, setAccountBalance] = useState('');
+  const [accountBalanceDate, setAccountBalanceDate] = useState(
+    new Date().toISOString().slice(0, 10),
+  );
+  const [accountReserveTarget, setAccountReserveTarget] = useState('');
+  const [reserveAmount, setReserveAmount] = useState('');
+  const [reserveFrom, setReserveFrom] = useState('');
+  const [reserveTo, setReserveTo] = useState('');
+  const [paymentDebtId, setPaymentDebtId] = useState('');
+  const [paymentAccountId, setPaymentAccountId] = useState('');
+  const [paymentAmount, setPaymentAmount] = useState('');
 
+  const hasCashBalance = d.hasCashBalance;
+  const availableBalance = d.availableBalance;
+  const upcomingObligations = listUpcomingObligations(state.obligations);
+  function openAccountForm(account?: FinancialAccount) {
+    setEditingAccountId(account?.id || null);
+    setAccountName(account?.name || '');
+    setAccountType(account?.type || 'bank');
+    setAccountBalance(
+      account
+        ? String(((account.currentBalanceCents ?? account.openingBalanceCents) / 100).toFixed(2)).replace('.', ',')
+        : '',
+    );
+    setAccountBalanceDate(
+      account?.balanceAsOf?.slice(0, 10) || new Date().toISOString().slice(0, 10),
+    );
+    setAccountReserveTarget(account?.targetBalanceCents ? String((account.targetBalanceCents / 100).toFixed(2)).replace('.', ',') : '');
+    setAccountFormOpen(true);
+  }
+
+  async function saveAccount(event: React.FormEvent) {
+    event.preventDefault();
+    const name = accountName.trim();
+    const balanceCents = moneyToCents(accountBalance);
+    if (!name || balanceCents < 0 || !accountBalanceDate) return;
+
+    const existing = state.financialAccounts.find(
+      (account) => account.id === editingAccountId,
+    );
+    const record: Partial<FinancialAccount> = {
+      ...(existing || {}),
+      name,
+      type: accountType,
+      openingBalanceCents: existing?.openingBalanceCents ?? balanceCents,
+      currentBalanceCents: balanceCents,
+      targetBalanceCents: accountType === 'reserve' ? moneyToCents(accountReserveTarget) : undefined,
+      balanceAsOf: accountBalanceDate,
+      rescuableBalanceCents:
+        accountType === 'own_collateral' ? balanceCents : undefined,
+      active: true,
+    };
+
+    if (await save('financialAccounts', record)) {
+      setAccountFormOpen(false);
+      setEditingAccountId(null);
+    }
+  }
   return (
     <>
       <section className="hero">
@@ -1100,12 +1196,24 @@ function Finance({
 
       <div className="grid">
         <div className="card span-4">
-          <div className="metric-label">Bancos / dinheiro</div>
-          <div className="metric">{brl(d.bankCash)}</div>
+          <div className="metric-label">Saldo disponível após contas</div>
+          <div className="metric">
+            {hasCashBalance ? brl(availableBalance) : 'Sem saldo cadastrado'}
+          </div>
+          <div className="metric-sub">
+            {hasCashBalance
+              ? `${brl(d.bankCash)} em bancos/dinheiro − ${brl(d.obligations)} em contas planejadas`
+              : 'Cadastre um saldo para calcular o valor disponível.'}
+          </div>
         </div>
         <div className="card span-4">
           <div className="metric-label">Resgatável separado</div>
           <div className="metric">{brl(d.rescuable)}</div>
+        </div>
+        <div className="card span-4">
+          <div className="metric-label">Reserva</div>
+          <div className="metric">{brl(d.reserveBalance)}</div>
+          <div className="metric-sub">Meta: {d.financePlan.reserveTargetCents ? `${brl(d.financePlan.reserveTargetCents)}${d.financePlan.reserveTargetIsEstimated ? ' · estimada em 3 meses de gastos' : ''}` : 'sem histórico para estimar'}{d.financePlan.reserveTargetCents ? ` · ${Math.min(100, Math.round(d.reserveBalance / d.financePlan.reserveTargetCents * 100))}%` : ''}</div>
         </div>
         <div className="card span-4">
           <div className="metric-label">Contas reservadas</div>
@@ -1156,8 +1264,181 @@ function Finance({
       </div>
 
       {view === 'overview' && (
+        <>
+        <div className="card" style={{ marginBottom: 16 }}>
+          <h3>Plano mensal automático</h3>
+          <div className="grid">
+            <div className="span-4"><div className="metric-label">Renda média confirmada</div><strong>{d.financePlan.averageIncomeCents === null ? 'Sem histórico suficiente' : brl(d.financePlan.averageIncomeCents)}</strong><div className="row-sub">Base: 3 meses anteriores · renda registrada em {d.financePlan.monthsWithIncome} mês(es)</div></div>
+            <div className="span-4"><div className="metric-label">Sobra estimada</div><strong>{d.financePlan.plannedMonthlySurplusCents === null ? 'Sem base para estimar' : brl(d.financePlan.plannedMonthlySurplusCents)}</strong><div className="row-sub">Histórico confirmado menos compromissos recorrentes ainda não vistos no histórico</div></div>
+            <div className="span-4"><div className="metric-label">Aporte mensal sugerido à reserva</div><strong>{brl(d.financePlan.reserveMonthlyCents)}</strong><div className="row-sub">10% da sobra positiva; limitado pelo saldo disponível ao transferir</div></div>
+          </div>
+          <div className="grid" style={{ marginTop: 16 }}>
+            <div className="span-6"><div className="metric-label">Limites sugeridos por categoria</div>{d.financePlan.suggestedLimits.length ? <div className="list">{d.financePlan.suggestedLimits.map((item: {category:string;averageCents:number;limitCents:number}) => <div className="row" key={item.category}><span>{item.category}<small className="row-sub"> média {brl(item.averageCents)}</small></span><strong>até {brl(item.limitCents)}</strong></div>)}</div> : <div className="empty">Os limites aparecem após gastos registrados em pelo menos 2 meses.</div>}</div>
+            <div className="span-6"><div className="metric-label">Contas previstas · próximos 3 meses</div><div className="list">{d.financePlan.forecast.map((item: {month:string;totalCents:number}) => <div className="row" key={item.month}><span>{item.month}</span><strong>{brl(item.totalCents)}</strong></div>)}</div><div className="row-sub">Inclui contas recorrentes cadastradas e compromissos com vencimento.</div></div>
+          </div>
+          <div style={{ marginTop: 16 }}><div className="metric-label">Plano mensal das dívidas</div>{d.financePlan.debtPlan.length ? <div className="list">{d.financePlan.debtPlan.map((item: {debtId:string;creditor:string;balanceCents:number;monthlyPlanCents:number;estimatedMonths:number|null;interestKnown:boolean}) => <div className="row" key={item.debtId}><span>{item.creditor}<small className="row-sub"> saldo {brl(item.balanceCents)}{item.interestKnown ? '' : ' · juros não informados'}{item.estimatedMonths ? ` · estimativa ${item.estimatedMonths} mês(es)` : ' · sem sobra estimada para pagamento extra'}</small></span><strong>{brl(item.monthlyPlanCents)}/mês</strong></div>)}</div> : <div className="empty">Cadastre dívidas e pagamentos para gerar o plano.</div>}</div>
+          <div className="metric-sub">Estimativas usam somente dados registrados. Limites são sugestões ajustáveis; previsão não confirma pagamento nem recebimento.</div>
+        </div>
+        <div className="card" style={{ marginBottom: 16 }}>
+          <h3>Movimentar reserva</h3>
+          <div className="form-grid">
+            <F label="Valor (R$)" value={reserveAmount} set={setReserveAmount} req />
+            <div className="field"><label>De</label><select className="select" value={reserveFrom} onChange={(event) => setReserveFrom(event.target.value)}><option value="">Escolha a conta</option>{state.financialAccounts.filter((account) => account.active && ['cash','bank','wallet','reserve'].includes(account.type)).map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></div>
+            <div className="field"><label>Para</label><select className="select" value={reserveTo} onChange={(event) => setReserveTo(event.target.value)}><option value="">Escolha a conta</option>{state.financialAccounts.filter((account) => account.active && ['cash','bank','wallet','reserve'].includes(account.type)).map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></div>
+            <button className="btn" type="button" disabled={!reserveFrom || !reserveTo || !reserveAmount} onClick={async () => { const ok = await financeAction({ action: 'reserve_transfer', actionId: crypto.randomUUID(), fromAccountId: reserveFrom, toAccountId: reserveTo, amountCents: moneyToCents(reserveAmount) }); if (ok) setReserveAmount(''); }}>Registrar transferência</button>
+          </div>
+        </div>
+        <div className="card" style={{ marginBottom: 16 }}>
+          <h3>Resumo realizado deste mês</h3>
+          <div className="grid">
+            <div className="span-4">
+              <div className="metric-label">Entrou</div>
+              <div className="metric">{brl(d.income)}</div>
+            </div>
+            <div className="span-4">
+              <div className="metric-label">Saiu</div>
+              <div className="metric">{brl(d.expense)}</div>
+            </div>
+            <div className="span-4">
+              <div className="metric-label">Resultado</div>
+              <div className="metric">{brl(d.net)}</div>
+            </div>
+          </div>
+          {!d.hasClearedMonthActivity && (
+            <div className="metric-sub">
+              Ainda não há movimentações confirmadas neste mês.
+            </div>
+          )}
+          {(d.plannedIncome > 0 || d.plannedExpense > 0) && (
+            <div className="metric-sub">
+              Em previsão: {brl(d.plannedIncome)} para entrar · {brl(d.plannedExpense)} para sair. Não incluído no resultado realizado.
+            </div>
+          )}
+        </div>
+
+        <div className="card" style={{ marginBottom: 16 }}>
+          <h3>De onde vem e para onde vai</h3>
+          <div className="grid">
+            <div className="span-6">
+              <div className="metric-label">Entradas por origem</div>
+              {d.incomeByCategory.length ? (
+                <div className="list">
+                  {d.incomeByCategory.map((item: { category: string; amountCents: number }) => (
+                    <div className="row" key={item.category}>
+                      <span>{item.category}</span>
+                      <strong>{brl(item.amountCents)}</strong>
+                    </div>
+                  ))}
+                </div>
+              ) : <div className="empty">Sem entradas confirmadas neste mês.</div>}
+            </div>
+            <div className="span-6">
+              <div className="metric-label">Saídas por categoria</div>
+              {d.expenseByCategory.length ? (
+                <div className="list">
+                  {d.expenseByCategory.map((item: { category: string; amountCents: number }) => (
+                    <div className="row" key={item.category}>
+                      <span>{item.category}</span>
+                      <strong>{brl(item.amountCents)}</strong>
+                    </div>
+                  ))}
+                </div>
+              ) : <div className="empty">Sem saídas confirmadas neste mês.</div>}
+            </div>
+          </div>
+          <div className="metric-sub">
+            Ao lançar uma entrada, use a origem: Pessoal, Filmmaker, Sistemas ou Outra.
+          </div>
+        </div>
+
+        <div className="card" style={{ marginBottom: 16 }}>
+          <h3>Vencidas e próximas — 30 dias</h3>
+          {upcomingObligations.items.length ? (
+            <div className="list">
+              {upcomingObligations.items.map((item) => {
+                return (
+                  <div className="row" key={item.id}>
+                    <div>
+                      <div className="row-title">{item.title}</div>
+                      <div className="row-sub">
+                        {item.kind} · {item.overdue ? 'Vencida' : `Vence ${dateLabel(item.dueDate)}`}
+                      </div>
+                    </div>
+                    <strong>{brl(item.amountCents)}</strong>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="empty">Nenhuma conta planejada com vencimento nos próximos 30 dias.</div>
+          )}
+          {upcomingObligations.withoutDueDateCount > 0 && (
+            <div className="metric-sub">
+              {upcomingObligations.withoutDueDateCount} conta(s) planejada(s) sem data de vencimento.
+            </div>
+          )}
+        </div>
+
         <div className="card">
-          <h3>Contas e saldos registrados</h3>
+          <div className="row" style={{ paddingTop: 0 }}>
+            <h3>Contas e saldos registrados</h3>
+            <button
+              className="btn secondary small"
+              type="button"
+              onClick={() => openAccountForm()}
+            >
+              Adicionar conta/saldo
+            </button>
+          </div>
+          {accountFormOpen && (
+            <form className="form-grid" onSubmit={saveAccount} style={{ marginBottom: 18 }}>
+              <F
+                label="Nome da conta"
+                value={accountName}
+                set={setAccountName}
+                req
+              />
+              <div className="field">
+                <label>Tipo</label>
+                <select
+                  className="select"
+                  value={accountType}
+                  onChange={(event) => setAccountType(event.target.value as FinancialAccount['type'])}
+                >
+                  {(['bank', 'cash', 'wallet', 'own_collateral', 'reserve'] as const).map((type) => (
+                    <option key={type} value={type}>{accountTypeLabel[type]}</option>
+                  ))}
+                </select>
+              </div>
+              {accountType === 'reserve' && <F label="Meta da reserva (R$)" value={accountReserveTarget} set={setAccountReserveTarget} />}
+              <F
+                label="Saldo atual (R$)"
+                value={accountBalance}
+                set={setAccountBalance}
+                inputMode="decimal"
+                req
+              />
+              <F
+                label="Data deste saldo"
+                type="date"
+                value={accountBalanceDate}
+                set={setAccountBalanceDate}
+                req
+              />
+              <div className="full toolbar">
+                <button className="btn" type="submit">
+                  {editingAccountId ? 'Atualizar saldo' : 'Salvar conta'}
+                </button>
+                <button
+                  className="btn secondary"
+                  type="button"
+                  onClick={() => setAccountFormOpen(false)}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          )}
           {state.financialAccounts.length ? (
             <div className="list">
               {state.financialAccounts.map((account) => (
@@ -1170,7 +1451,7 @@ function Finance({
                       {account.name}
                     </div>
                     <div className="row-sub">
-                      {account.type}
+                      {accountTypeLabel[account.type] || account.type}
                       {account.balanceAsOf
                         ? ` · posição de ${dateLabel(account.balanceAsOf)}`
                         : ''}
@@ -1188,6 +1469,14 @@ function Finance({
                         {brl(account.rescuableBalanceCents)} resgatável
                       </div>
                     )}
+                    <button
+                      className="btn secondary small"
+                      type="button"
+                      style={{ marginTop: 8 }}
+                      onClick={() => openAccountForm(account)}
+                    >
+                      Atualizar saldo
+                    </button>
                   </div>
                 </div>
               ))}
@@ -1198,6 +1487,7 @@ function Finance({
             </div>
           )}
         </div>
+        </>
       )}
 
       {view === 'transactions' && (
@@ -1209,6 +1499,7 @@ function Finance({
                   <th>Data</th>
                   <th>Descrição</th>
                   <th>Categoria</th>
+                  <th>Situação</th>
                   <th>Valor</th>
                 </tr>
               </thead>
@@ -1218,9 +1509,26 @@ function Finance({
                     <td>{dateLabel(item.occurredOn)}</td>
                     <td>{item.description}</td>
                     <td>{item.category || '—'}</td>
+                    <td>
+                      {item.status === 'cleared'
+                        ? 'Confirmada'
+                        : item.status === 'planned'
+                          ? 'Prevista'
+                          : 'Cancelada'}
+                    </td>
                     <td style={{ fontWeight: 800 }}>
-                      {item.type === 'expense' ? '- ' : '+ '}
+                      {item.type === 'transfer' ? '↔ ' : item.type === 'expense' ? '- ' : '+ '}
                       {brl(item.amountCents)}
+                      {item.status === 'planned' && (
+                        <button
+                          className="btn secondary small"
+                          type="button"
+                          style={{ marginLeft: 8 }}
+                          onClick={() => save('transactions', { ...item, status: 'cleared' })}
+                        >
+                          Confirmar
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -1236,6 +1544,13 @@ function Finance({
 
       {view === 'debts' && (
         <div className="card">
+          <h3>Registrar pagamento de dívida</h3>
+          <div className="form-grid" style={{ marginBottom: 18 }}>
+            <div className="field"><label>Dívida</label><select className="select" value={paymentDebtId} onChange={(event) => setPaymentDebtId(event.target.value)}><option value="">Escolha a dívida</option>{state.debts.filter((debt) => debt.status === 'active').map((debt) => <option key={debt.id} value={debt.id}>{debt.creditorName} · {brl(debt.currentBalanceCents)}</option>)}</select></div>
+            <div className="field"><label>Conta usada</label><select className="select" value={paymentAccountId} onChange={(event) => setPaymentAccountId(event.target.value)}><option value="">Escolha a conta</option>{state.financialAccounts.filter((account) => account.active && ['cash','bank','wallet'].includes(account.type)).map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></div>
+            <F label="Valor pago (R$)" value={paymentAmount} set={setPaymentAmount} req />
+            <button className="btn" type="button" disabled={!paymentDebtId || !paymentAccountId || !paymentAmount} onClick={async () => { const ok = await financeAction({ action: 'debt_payment', actionId: crypto.randomUUID(), debtId: paymentDebtId, fromAccountId: paymentAccountId, amountCents: moneyToCents(paymentAmount) }); if (ok) setPaymentAmount(''); }}>Registrar pagamento</button>
+          </div>
           {state.debts.length ? (
             <div className="list">
               {state.debts.map((debt) => (
@@ -2080,8 +2395,30 @@ function QuickCapture({
         occurredOn: value('date') || now.slice(0, 10),
         category: value('category'),
         description: value('description'),
-        status: 'cleared',
+        status: value('status') || 'cleared',
         certainty: 'confirmed',
+      });
+    }
+
+    if (type === 'receivable') {
+      await save('receivables', {
+        title: value('title'),
+        amountCents: moneyToCents(value('amount')),
+        certainty: value('certainty') || 'confirmed',
+        status: 'pending',
+        expectedOn: value('date') || undefined,
+        notes: value('description') || undefined,
+      });
+    }
+
+    if (type === 'obligation') {
+      await save('obligations', {
+        title: value('title'),
+        amountCents: moneyToCents(value('amount')),
+        kind: value('kind') || 'personal',
+        status: 'planned',
+        dueDate: value('date') || undefined,
+        essentiality: value('essentiality') || 'review',
       });
     }
 
@@ -2170,6 +2507,8 @@ function QuickCapture({
     expense: 'Gasto',
     income: 'Entrada',
     debt: 'Dívida',
+    receivable: 'A receber',
+    obligation: 'Conta',
     task: 'Tarefa',
     goal: 'Objetivo',
     inbox: 'Anotação',
@@ -2254,7 +2593,7 @@ function QuickCapture({
               set={(next) => set('date', next)}
             />
             <F
-              label="Categoria"
+              label={type === 'income' ? 'Origem da renda' : 'Categoria da saída'}
               value={value('category')}
               set={(next) => set('category', next)}
             />
@@ -2264,6 +2603,17 @@ function QuickCapture({
               set={(next) => set('description', next)}
               req
             />
+            <div className="field full">
+              <label>Situação</label>
+              <select
+                className="select"
+                value={value('status') || 'cleared'}
+                onChange={(event) => set('status', event.target.value)}
+              >
+                <option value="cleared">Já aconteceu</option>
+                <option value="planned">Prevista</option>
+              </select>
+            </div>
           </div>
         )}
 
@@ -2301,6 +2651,53 @@ function QuickCapture({
                   set('description', event.target.value)
                 }
               />
+            </div>
+          </div>
+        )}
+
+        {type === 'receivable' && (
+          <div className="form-grid">
+            <F label="Quem vai pagar / descrição" value={value('title')} set={(next) => set('title', next)} req />
+            <F label="Valor previsto (R$)" value={value('amount')} set={(next) => set('amount', next)} req />
+            <F label="Data esperada" type="date" value={value('date')} set={(next) => set('date', next)} />
+            <div className="field">
+              <label>Confiança</label>
+              <select className="select" value={value('certainty') || 'confirmed'} onChange={(event) => set('certainty', event.target.value)}>
+                <option value="confirmed">Combinado</option>
+                <option value="estimate">Estimativa</option>
+                <option value="forecast">Possibilidade</option>
+              </select>
+            </div>
+            <div className="field full">
+              <label>Observação</label>
+              <textarea className="textarea" value={value('description')} onChange={(event) => set('description', event.target.value)} />
+            </div>
+          </div>
+        )}
+
+        {type === 'obligation' && (
+          <div className="form-grid">
+            <F label="Conta / compromisso" value={value('title')} set={(next) => set('title', next)} req />
+            <F label="Valor (R$)" value={value('amount')} set={(next) => set('amount', next)} req />
+            <F label="Vencimento" type="date" value={value('date')} set={(next) => set('date', next)} />
+            <div className="field">
+              <label>Tipo</label>
+              <select className="select" value={value('kind') || 'personal'} onChange={(event) => set('kind', event.target.value)}>
+                <option value="personal">Pessoal</option>
+                <option value="subscription">Assinatura</option>
+                <option value="card_bill">Fatura do cartão</option>
+                <option value="infrastructure">Sistema / infraestrutura</option>
+                <option value="debt_payment">Parcela de dívida</option>
+                <option value="other">Outro</option>
+              </select>
+            </div>
+            <div className="field">
+              <label>Importância</label>
+              <select className="select" value={value('essentiality') || 'review'} onChange={(event) => set('essentiality', event.target.value)}>
+                <option value="essential">Essencial</option>
+                <option value="review">Revisar</option>
+                <option value="optional">Opcional</option>
+              </select>
             </div>
           </div>
         )}
@@ -2578,12 +2975,14 @@ function F({
   value,
   set,
   type = 'text',
+  inputMode,
   req = false,
 }: {
   label: string;
   value: string;
   set: (value: string) => void;
   type?: string;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode'];
   req?: boolean;
 }) {
   return (
@@ -2592,6 +2991,7 @@ function F({
       <input
         className="input"
         type={type}
+        inputMode={inputMode}
         value={value}
         onChange={(event) => set(event.target.value)}
         required={req}

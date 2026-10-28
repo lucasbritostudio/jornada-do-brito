@@ -1,4 +1,5 @@
-/** Controle de produção, autônomo em relação ao CRM financeiro da Jornada.
+/** Controle de produção. Recebimentos registrados aqui também são conciliados
+ * com o financeiro pessoal pela API, usando uma chave única por pagamento.
  * Horários ISO sempre representam instantes; exibição e relógio em America/Fortaleza.
  * Regra confirmada: gravou no dia D? relógio inicia 00:00 do dia D+1
  * (Fortaleza). Meta interna +48h; prazo máximo +72h. Avaliação
@@ -30,6 +31,7 @@ export type Payment = {
   id: string;
   workId: string;
   amountCents: number;
+  accountId?: string;
   receivedAt: string;
   createdAt: string;
 };

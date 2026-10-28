@@ -11,7 +11,8 @@ type WorkView={
   clock:Clock;urgency:'not_started'|'on_track'|'at_risk'|'overdue'|'sent_on_time'|'sent_late'|'finished'|'waiting_client'|'revisions';
   payment:{receivedCents:number;remainingCents:number|null;status:string};
 };
-type State={works:WorkView[];conflicts:{startOfWork:string;workIds:string[]}[];bookingConflicts:{date:string;workIds:string[]}[];payments:{id:string;workId:string;amountCents:number;receivedAt:string}[];snapshotAt:string};
+type State={works:WorkView[];conflicts:{startOfWork:string;workIds:string[]}[];bookingConflicts:{date:string;workIds:string[]}[];payments:{id:string;workId:string;amountCents:number;receivedAt:string}[];snapshotAt:string;financeSyncPending?:boolean};
+type MoneyAccount={id:string;name:string;type:'cash'|'bank'|'wallet'|'credit_card'|'own_collateral'|'reserve';active:boolean};
 const LABEL:Record<Stage,string>={
   planned:'Planejamento',scheduled:'Gravação agendada',captured:'Gravado',
   editing:'Em edição',review:'Enviado para avaliação',changes_requested:'Cliente pediu ajustes',
@@ -67,11 +68,13 @@ export default function ProductionDashboard(){
  const [editingId,setEditingId]=useState('');
  const [payId,setPayId]=useState('');
  const [payAmount,setPayAmount]=useState('');
+ const [payAccountId,setPayAccountId]=useState('');
  const [payOp,setPayOp]=useState('');
  const [createOp,setCreateOp]=useState('');
  const [captureId,setCaptureId]=useState('');
  const [captureAt,setCaptureAt]=useState('');
  const [customers,setCustomers]=useState<{id:string;name:string}[]>([]);
+ const [moneyAccounts,setMoneyAccounts]=useState<MoneyAccount[]>([]);
  const [assistantMessage,setAssistantMessage]=useState('');
  const [assistantBusy,setAssistantBusy]=useState(false);
  const [assistantAnswer,setAssistantAnswer]=useState('');
@@ -91,7 +94,7 @@ export default function ProductionDashboard(){
       await refresh();
     })().catch(async e=>{setError(e instanceof Error?e.message:String(e));await refresh().catch(()=>{});});
    fetch('/api/state',{cache:'no-store'}).then(r=>r.ok?r.json():null)
-     .then(j=>{if(j?.contacts)setCustomers(j.contacts.map((c:{id:string;name:string})=>({id:c.id,name:c.name})));}).catch(()=>{});
+     .then(j=>{if(j?.contacts)setCustomers(j.contacts.map((c:{id:string;name:string})=>({id:c.id,name:c.name})));if(j?.financialAccounts)setMoneyAccounts(j.financialAccounts.filter((a:MoneyAccount)=>a.active&&['cash','bank','wallet'].includes(a.type)));}).catch(()=>{});
    const timer=setInterval(()=>setNow(Date.now()),60_000);
    return()=>clearInterval(timer);
  },[refresh]);
@@ -167,9 +170,10 @@ export default function ProductionDashboard(){
    if(!Number.isSafeInteger(cents)||cents<=0){setError('Informe o valor realmente recebido.');return;}
    const op=payOp||createOperationId();
    setPayOp(op);
-   const ok=await api({action:'payment',workId:w.id,amountCents:cents,operationId:op,confirmed:true},
-     'Pagamento confirmado no controle de produção. Confira o lançamento no Financeiro para não duplicar.');
-   if(ok){setPayId('');setPayAmount('');setPayOp('');}
+   if(!payAccountId){setError('Escolha a conta onde o dinheiro entrou.');return;}
+   const ok=await api({action:'payment',workId:w.id,amountCents:cents,accountId:payAccountId,operationId:op,confirmed:true},
+     'Recebimento registrado na produção e lançado no Financeiro.');
+   if(ok){setPayId('');setPayAmount('');setPayAccountId('');setPayOp('');}
  }
  return <main className="pr-shell">
   <header className="pr-head">
@@ -194,6 +198,7 @@ export default function ProductionDashboard(){
    <div><span>Meta interna</span><b>48 horas</b><small>Primeira versão enviada ao cliente para avaliação</small></div>
    <div><span>Entrega x avaliação</span><b>Separadas</b><small>Retorno do cliente e ajustes não apagam seu envio no prazo</small></div></section>
   {error&&<div className="pr-error" role="alert">{error}</div>}
+  {data?.financeSyncPending&&<div className="pr-error" role="alert">Há um recebimento salvo na Produção que ainda não foi conciliado no Financeiro. Confira se a conta continua cadastrada e atualize esta tela. Não lance o mesmo valor manualmente.</div>}
   {notice&&<div className="pr-notice" role="status">{notice}</div>}
   {!data?<p className="pr-loading">Carregando trabalhos com segurança…</p>:<>
   <section className="pr-metrics">
@@ -236,13 +241,14 @@ export default function ProductionDashboard(){
           {to==='captured'?'Concluí a gravação':to==='review'?'Enviei para avaliação':to==='approved'?'Cliente aprovou':to==='delivered'?'Entreguei o vídeo':LABEL[to]}
          </button>)}
         {!['cancelled','delivered'].includes(w.stage)&&<button className="pr-btn-light" disabled={busy} onClick={()=>setEditingId(editingId===w.id?'':w.id)}>Editar dados</button>}
-        {w.payment.remainingCents!==null&&w.payment.remainingCents>0&&<button className="pr-btn-money" disabled={busy} onClick={()=>{setPayId(payId===w.id?'':w.id);setPayOp('');setPayAmount('');}}>Registrar recebimento</button>}
+        {w.payment.remainingCents!==null&&w.payment.remainingCents>0&&<button className="pr-btn-money" disabled={busy} onClick={()=>{setPayId(payId===w.id?'':w.id);setPayOp('');setPayAmount('');setPayAccountId('');}}>Registrar recebimento</button>}
        </div>
        {captureId===w.id&&<div className="pr-inline"><strong>Quando terminou a gravação?</strong><p>Deixe em branco para registrar agora. Para gravação passada, informe a hora real do seu aparelho.</p>
         <input aria-label="Data de conclusão da gravação" type="datetime-local" value={captureAt} onChange={e=>setCaptureAt(e.target.value)}/><button disabled={busy} onClick={()=>capture(w)}>Confirmar captação</button><button className="pr-btn-light" onClick={()=>setCaptureId('')}>Voltar</button></div>}
        {payId===w.id&&<div className="pr-inline"><strong>Pagamento recebido de verdade</strong><input aria-label="Valor recebido em reais" value={payAmount} inputMode="decimal" placeholder="Ex.: 200,00" onChange={e=>{setPayAmount(e.target.value);setPayOp('');}}/>
+        <label>Conta onde o dinheiro entrou<select aria-label="Conta onde o dinheiro entrou" value={payAccountId} onChange={e=>setPayAccountId(e.target.value)}><option value="">Escolha uma conta</option>{moneyAccounts.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
         <button disabled={busy} onClick={()=>receive(w)}>Confirmar valor recebido</button><button className="pr-btn-light" onClick={()=>setPayId('')}>Voltar</button>
-        <p>Não gera transação no Financeiro. Registre essa entrada lá uma única vez para conciliar.</p></div>}
+        <p>O mesmo recebimento será registrado no Financeiro e atualizado no saldo desta conta.</p></div>}
        {editingId===w.id&&<EditWork key={w.id} w={w} busy={busy} save={api} close={()=>setEditingId('')}/>}
       </article>;
      })}</div>}

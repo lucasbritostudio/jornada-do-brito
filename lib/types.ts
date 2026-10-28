@@ -69,6 +69,38 @@ export type Project = {
   updatedAt: string;
 };
 
+export type ServiceOffering = {
+  id: Id;
+  name: string;
+  description: string;
+  priceCents: number;
+  deliveryMode: 'video' | 'general';
+  deliveryLabel?: string;
+  portfolioImageUrl?: string;
+  portfolioLinks?: string[];
+  published: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ClientRequest = {
+  id: Id;
+  contactId: Id;
+  opportunityId: Id;
+  serviceId: Id;
+  serviceName: string;
+  deliveryMode: 'video' | 'general';
+  agreedPriceCents: number;
+  note?: string;
+  status: 'pending' | 'accepted' | 'declined';
+  projectId?: Id;
+  workId?: Id;
+  taskId?: Id;
+  portalTokenHash?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type VideoBrief = {
   id: Id;
   projectId?: Id;
@@ -104,10 +136,11 @@ export type VideoBrief = {
 export type FinancialAccount = {
   id: Id;
   name: string;
-  type: 'cash' | 'bank' | 'wallet' | 'credit_card' | 'own_collateral';
+  type: 'cash' | 'bank' | 'wallet' | 'credit_card' | 'own_collateral' | 'reserve';
   openingBalanceCents: number;
   currentBalanceCents?: number;
   rescuableBalanceCents?: number;
+  targetBalanceCents?: number;
   balanceAsOf?: string;
   active: boolean;
   notes?: string;
@@ -120,7 +153,10 @@ export type FinancialAccount = {
 export type Transaction = {
   id: Id;
   accountId?: Id;
-  type: 'income' | 'expense';
+  targetAccountId?: Id;
+  actionId?: string;
+  relatedDebtId?: Id;
+  type: 'income' | 'expense' | 'transfer';
   amountCents: number;
   occurredOn: string;
   category?: string;
@@ -420,6 +456,8 @@ export type WorkspaceState = {
   contacts: Contact[];
   opportunities: Opportunity[];
   projects: Project[];
+  serviceCatalog: ServiceOffering[];
+  clientRequests: ClientRequest[];
   videoBriefs: VideoBrief[];
   financialAccounts: FinancialAccount[];
   transactions: Transaction[];
