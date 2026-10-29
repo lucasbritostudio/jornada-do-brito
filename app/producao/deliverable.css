@@ -1,0 +1,5 @@
+.pr-deliverable{display:grid;gap:8px;margin:12px 0;padding:13px;border:1px solid #456459;border-radius:11px;background:#11211d}
+.pr-deliverable>small{color:#c4d3cb;overflow-wrap:anywhere;line-height:1.5}
+.pr-deliverable>div{display:flex;gap:8px;flex-wrap:wrap}
+.pr-deliverable button{min-height:42px;border:0;border-radius:9px;padding:9px 12px;background:#d4eb99;color:#1d2b20;font-weight:800}
+.pr-deliverable button.pr-btn-light{border:1px solid #456459;background:#1b2a25;color:#ecf1ed}

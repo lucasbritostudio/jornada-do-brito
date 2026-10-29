@@ -1638,10 +1638,13 @@ function Finance({
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <strong>
-                      {item.amountCents
-                        ? brl(item.amountCents)
-                        : 'Valor não fechado'}
+                      {item.agreedAmountCents !== undefined && item.status === 'received'
+                        ? 'Quitado'
+                        : item.amountCents !== undefined
+                          ? brl(item.amountCents)
+                          : 'Valor não fechado'}
                     </strong>
+                    {item.agreedAmountCents !== undefined && <div className="row-sub">Combinado: {brl(item.agreedAmountCents)} · Recebido: {brl(item.receivedCents || 0)}</div>}
                     <div>
                       <span
                         className={`badge ${
@@ -1650,7 +1653,7 @@ function Finance({
                             : 'warn'
                         }`}
                       >
-                        {item.status}
+                        {item.status === 'pending' ? 'Falta receber' : item.status === 'received' ? 'Recebido' : 'Cancelado'}
                       </span>
                     </div>
                   </div>

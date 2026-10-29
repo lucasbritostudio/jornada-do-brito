@@ -96,6 +96,13 @@ export async function POST(req: Request) {
     // this new service disappear or fail with a stale version.
     if (collection === 'serviceCatalog' && body.operation === 'upsert') {
       const incoming = body.record && typeof body.record === 'object' ? body.record : {};
+      const quantity = incoming.videoQuantity ?? 1;
+      if (typeof incoming.name !== 'string' || incoming.name.trim().length < 2 || typeof incoming.description !== 'string' || !incoming.description.trim() ||
+          !Number.isSafeInteger(incoming.priceCents) || incoming.priceCents < 0 || incoming.priceCents > 100_000_000 ||
+          !['video', 'general'].includes(incoming.deliveryMode) || typeof incoming.published !== 'boolean' ||
+          !Number.isSafeInteger(quantity) || quantity < 1 || quantity > 12) {
+        return NextResponse.json({ error: 'Confira nome, descrição, preço e quantidade de vídeos.' }, { status: 400 });
+      }
       const recordId = String(incoming.id || crypto.randomUUID());
       await mutateStateSafely((latest) => {
         const records = latest.serviceCatalog;

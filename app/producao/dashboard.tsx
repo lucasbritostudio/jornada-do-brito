@@ -1,12 +1,16 @@
 'use client';
 import {useCallback,useEffect,useMemo,useState} from 'react';
 import type {Stage} from '@/lib/production';
+import DeliverableUploader from './deliverable-uploader';
 
 type Clock={startedAt:string;targetAt:string;dueAt:string}|null;
 type WorkView={
   id:string;clientName:string;contactId?:string;title:string;stage:Stage;
   scheduledAt?:string;capturedAt?:string;firstReviewSentAt?:string;
+  clientRequestId?:string;deliveryClockMode?:'after_capture_and_materials';materialsReadyAt?:string;
   reviewSentAt?:string;approvedAt?:string;deliveredAt?:string;
+  reviewAsset?:{id:string;name:string;size:number;createdAt:string};finalAsset?:{id:string;name:string;size:number;createdAt:string};
+  clientFeedback?:{id:string;decision:'approved'|'changes_requested';message?:string;createdAt:string}[];
   notes?:string;agreedFeeCents?:number;createdAt:string;
   clock:Clock;urgency:'not_started'|'on_track'|'at_risk'|'overdue'|'sent_on_time'|'sent_late'|'finished'|'waiting_client'|'revisions';
   payment:{receivedCents:number;remainingCents:number|null;status:string};
@@ -46,7 +50,7 @@ function displayUrgency(work:WorkView,now:number){
     if(work.stage==='approved')return {label:'Aprovado · concluir entrega',tone:'good'};
     return {label:'Enviado para avaliação',tone:'good'};
   }
-  if(!work.clock)return {label:'Aguardando gravação',tone:'quiet'};
+  if(!work.clock)return {label:work.capturedAt?'Aguardando materiais':'Aguardando gravação',tone:'quiet'};
   if(now>=Date.parse(work.clock.dueAt))return {label:'Prazo excedido',tone:'danger'};
   if(now>=Date.parse(work.clock.targetAt))return {label:'Meta 48h atingida',tone:'attention'};
   return {label:'Dentro do prazo',tone:'good'};
@@ -73,6 +77,7 @@ export default function ProductionDashboard(){
  const [createOp,setCreateOp]=useState('');
  const [captureId,setCaptureId]=useState('');
  const [captureAt,setCaptureAt]=useState('');
+ const [materialsReady,setMaterialsReady]=useState(false);
  const [customers,setCustomers]=useState<{id:string;name:string}[]>([]);
  const [moneyAccounts,setMoneyAccounts]=useState<MoneyAccount[]>([]);
  const [assistantMessage,setAssistantMessage]=useState('');
@@ -120,7 +125,7 @@ export default function ProductionDashboard(){
      });
      const json=await response.json();
      if(!response.ok)throw new Error(json.error||'Não foi possível salvar.');
-     await refresh();setNotice(success);return true;
+     await refresh();setNotice(json.message||success);return true;
    }catch(e){setError(e instanceof Error?e.message:'Ocorreu um erro.');return false;}
    finally{setBusy(false);}
  }
@@ -152,7 +157,7 @@ export default function ProductionDashboard(){
    if(ok){setClientName('');setTitle('');setFee('');setDate('');setCreateOp('');}
  }
  async function move(w:WorkView,to:Stage){
-   if(to==='captured'){setCaptureId(w.id);setCaptureAt('');return;}
+   if(to==='captured'){setCaptureId(w.id);setCaptureAt('');setMaterialsReady(false);return;}
    if(to==='cancelled'&&!window.confirm('Cancelar este trabalho? Os recebimentos já registrados não serão apagados.'))return;
    await api({action:'stage',workId:w.id,stage:to},'Etapa atualizada.');
  }
@@ -162,7 +167,7 @@ export default function ProductionDashboard(){
      const dt=new Date(captureAt+'-03:00');if(!Number.isFinite(dt.getTime())){setError('Data inválida.');return;}
      iso=inputToIso(captureAt);
    }
-   const ok=await api({action:'stage',workId:w.id,stage:'captured',...(iso?{capturedAt:iso}:{})},'Gravação concluída. Prazo de 72 horas iniciado no dia seguinte.');
+   const ok=await api({action:'stage',workId:w.id,stage:'captured',materialsReady,...(iso?{capturedAt:iso}:{})},w.deliveryClockMode==='after_capture_and_materials'?(materialsReady?'Gravação e materiais prontos. Prazo de 72 horas iniciado.':'Gravação concluída. O prazo aguarda os materiais.'):'Gravação concluída. Prazo de 72 horas iniciado no dia seguinte.');
    if(ok){setCaptureId('');setCaptureAt('');}
  }
  async function receive(w:WorkView){
@@ -175,12 +180,32 @@ export default function ProductionDashboard(){
      'Recebimento registrado na produção e lançado no Financeiro.');
    if(ok){setPayId('');setPayAmount('');setPayAccountId('');setPayOp('');}
  }
+ async function completeDeliverable(workId:string,kind:'review'|'final',assetId:string){
+  setBusy(true);setError('');setNotice('');
+  try{
+   let saved=false;
+   for(let attempt=0;attempt<12&&!saved;attempt++){
+    if(attempt)await new Promise(resolve=>setTimeout(resolve,500));
+    const response=await fetch('/api/production',{cache:'no-store'});
+    if(!response.ok)throw new Error('Não consegui confirmar o arquivo na Produção. Atualize e tente novamente.');
+    const state=await response.json() as State;
+    const work=state.works.find(item=>item.id===workId);
+    saved=work?.[kind==='review'?'reviewAsset':'finalAsset']?.id===assetId;
+   }
+   if(!saved)throw new Error('O vídeo foi enviado, mas ainda não apareceu na Produção. Tente novamente em instantes.');
+   const stage=kind==='review'?'review':'delivered';
+   const response=await fetch('/api/production',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'stage',workId,stage})});
+   const result=await response.json();if(!response.ok)throw new Error(result.error||'Não consegui atualizar a etapa.');
+   setNotice(kind==='review'?'Prévia enviada para o cliente avaliar.':'Vídeo final entregue pelo link pessoal.');await refresh();
+  }catch(reason){setError(reason instanceof Error?reason.message:'Não consegui finalizar o envio.');throw reason;}
+  finally{setBusy(false);}
+ }
  return <main className="pr-shell">
   <header className="pr-head">
    <a href="/" className="pr-back">← Voltar à Jornada</a>
    <span className="pr-eyebrow">JORNADA / CONTROLE DE PRODUÇÃO</span>
    <h1>Produção <em>no prazo.</em></h1>
-   <p>Da gravação à aprovação e ao recebimento. Seu relógio só começa no dia seguinte à captação.</p>
+   <p>Da gravação à entrega e ao recebimento. Nos novos pedidos, o prazo começa quando a gravação e os materiais estão prontos.</p>
   </header>
   <section className="pr-assistant-card">
    <div><span className="pr-mini">JORNADA IA · SUA PRODUÇÃO</span><h2>Me conte. Eu organizo.</h2>
@@ -192,9 +217,9 @@ export default function ProductionDashboard(){
      {assistantBusy?'Organizando…':'Atualizar por conversa'}</button>
    </div>
    {assistantAnswer&&<p className="pr-assistant-answer" role="status">{assistantAnswer}</p>}
-   <small>O prazo só começa com a gravação confirmada. Propostas e dinheiro ainda não recebido não viram contratos ou pagamentos.</small>
+   <small>Nos novos pedidos, confirme também os materiais no painel. Dinheiro só entra no Financeiro quando você informa o recebimento e a conta.</small>
   </section>
-  <section className="pr-rule"><div><span>Prazo combinado</span><b>72 horas</b><small>Contadas a partir de 00h do dia seguinte, no horário de Fortaleza</small></div>
+  <section className="pr-rule"><div><span>Prazo combinado</span><b>72 horas</b><small>Novos pedidos: após gravação e materiais prontos. Trabalhos antigos mantêm o prazo já combinado.</small></div>
    <div><span>Meta interna</span><b>48 horas</b><small>Primeira versão enviada ao cliente para avaliação</small></div>
    <div><span>Entrega x avaliação</span><b>Separadas</b><small>Retorno do cliente e ajustes não apagam seu envio no prazo</small></div></section>
   {error&&<div className="pr-error" role="alert">{error}</div>}
@@ -235,15 +260,20 @@ export default function ProductionDashboard(){
        {w.firstReviewSentAt&&<p className="pr-meta">Primeiro envio para avaliação: {fmt(w.firstReviewSentAt)} · {w.clock && Date.parse(w.firstReviewSentAt)<=Date.parse(w.clock.dueAt)?'dentro das 72h':'após as 72h'}</p>}
        <div className="pr-payment"><div><small>Recebido (confirmado no módulo)</small><b>{money(w.payment.receivedCents)}</b></div>
          <div><small>Falta receber</small><b>{w.payment.remainingCents===null?'Não definido':money(w.payment.remainingCents)}</b></div></div>
+       {w.clientFeedback?.at(-1)?.message&&<p className="pr-meta"><strong>Pedido de ajuste do cliente:</strong> {w.clientFeedback.at(-1)?.message}</p>}
        <div className="pr-actions">
-        {NEXT[w.stage].map(to=><button disabled={busy} key={to}
+        {w.deliveryClockMode==='after_capture_and_materials'&&w.capturedAt&&!w.materialsReadyAt&&!['delivered','cancelled'].includes(w.stage)&&<button disabled={busy} onClick={()=>api({action:'materials-ready',workId:w.id},'Materiais confirmados. As 72 horas começam quando gravação e materiais estão prontos.')}>Recebi todos os materiais</button>}
+        {NEXT[w.stage].filter(to=>!w.clientRequestId||!['review','approved','delivered'].includes(to)).map(to=><button disabled={busy} key={to}
          className={to==='cancelled'?'pr-btn-light':''} onClick={()=>move(w,to)}>
           {to==='captured'?'Concluí a gravação':to==='review'?'Enviei para avaliação':to==='approved'?'Cliente aprovou':to==='delivered'?'Entreguei o vídeo':LABEL[to]}
          </button>)}
         {!['cancelled','delivered'].includes(w.stage)&&<button className="pr-btn-light" disabled={busy} onClick={()=>setEditingId(editingId===w.id?'':w.id)}>Editar dados</button>}
         {w.payment.remainingCents!==null&&w.payment.remainingCents>0&&<button className="pr-btn-money" disabled={busy} onClick={()=>{setPayId(payId===w.id?'':w.id);setPayOp('');setPayAmount('');setPayAccountId('');}}>Registrar recebimento</button>}
        </div>
+       {w.clientRequestId&&['editing','changes_requested'].includes(w.stage)&&<DeliverableUploader key={`${w.id}-review-${w.reviewAsset?.id||'none'}`} workId={w.id} kind="review" current={w.reviewAsset} busy={busy} onComplete={(assetId,kind)=>completeDeliverable(w.id,kind,assetId)}/>}
+       {w.clientRequestId&&w.stage==='approved'&&<DeliverableUploader key={`${w.id}-final-${w.finalAsset?.id||'none'}`} workId={w.id} kind="final" current={w.finalAsset} busy={busy} onComplete={(assetId,kind)=>completeDeliverable(w.id,kind,assetId)}/>}
        {captureId===w.id&&<div className="pr-inline"><strong>Quando terminou a gravação?</strong><p>Deixe em branco para registrar agora. Para gravação passada, informe a hora real do seu aparelho.</p>
+        {w.deliveryClockMode==='after_capture_and_materials'&&<label><input type="checkbox" checked={materialsReady} onChange={e=>setMaterialsReady(e.target.checked)}/> Também já recebi todos os materiais para editar este vídeo</label>}
         <input aria-label="Data de conclusão da gravação" type="datetime-local" value={captureAt} onChange={e=>setCaptureAt(e.target.value)}/><button disabled={busy} onClick={()=>capture(w)}>Confirmar captação</button><button className="pr-btn-light" onClick={()=>setCaptureId('')}>Voltar</button></div>}
        {payId===w.id&&<div className="pr-inline"><strong>Pagamento recebido de verdade</strong><input aria-label="Valor recebido em reais" value={payAmount} inputMode="decimal" placeholder="Ex.: 200,00" onChange={e=>{setPayAmount(e.target.value);setPayOp('');}}/>
         <label>Conta onde o dinheiro entrou<select aria-label="Conta onde o dinheiro entrou" value={payAccountId} onChange={e=>setPayAccountId(e.target.value)}><option value="">Escolha uma conta</option>{moneyAccounts.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
@@ -269,8 +299,8 @@ export default function ProductionDashboard(){
     <section className="pr-card">
      <header className="pr-card-header"><div><span className="pr-mini">COMO FUNCIONA</span><h2>Seu fluxo de 3 dias</h2></div></header>
      <ol className="pr-steps">
-      <li><b>Gravação</b><p>Finalize os takes e confirme o término. Pode descansar; o prazo começa no dia seguinte.</p></li>
-      <li><b>Dia seguinte</b><p>Edição e primeira versão. Meta interna: enviar para avaliação antes de 48 horas.</p></li>
+      <li><b>Gravação</b><p>Confirme o término da gravação e se já recebeu tudo que precisa para editar.</p></li>
+      <li><b>Edição</b><p>Nos novos pedidos, as 72 horas começam quando gravação e materiais estão prontos. Meta interna: enviar para avaliação antes de 48 horas.</p></li>
       <li><b>Margem de segurança</b><p>Até 72 horas para enviar o vídeo à avaliação. A aprovação depende do cliente.</p></li>
      </ol>
      <p className="pr-description">Alertas aparecem neste painel ao abrir a Jornada; notificações externas não foram ativadas.</p>
@@ -288,7 +318,7 @@ function EditWork({w,busy,save,close}:{w:WorkView;busy:boolean;save:(p:Record<st
  return <div className="pr-inline pr-edit">
   <strong>Editar dados do serviço</strong>
   <label>Nome<input value={name} onChange={e=>setName(e.target.value)}/></label>
-  <label>Valor combinado (R$)<input value={fee} inputMode="decimal" onChange={e=>setFee(e.target.value)}/></label>
+  <label>Valor combinado (R$)<input readOnly={Boolean(w.clientRequestId)} value={fee} inputMode="decimal" onChange={e=>setFee(e.target.value)}/></label>
   {['planned','scheduled'].includes(w.stage)&&<label>Gravação prevista<input type="datetime-local" value={scheduled} onChange={e=>setScheduled(e.target.value)}/></label>}
   <label>Observações<textarea value={notes} onChange={e=>setNotes(e.target.value)} maxLength={1500}/></label>
   <button disabled={busy} onClick={async()=>{

@@ -85,7 +85,10 @@ export function applyProductionStage(data:ProductionData,clientName:string,stage
  if(stage==='captured')work.capturedAt=time;
  if(['editing','review','approved','delivered','changes_requested'].includes(stage)&&!work.capturedAt)
   throw new Error('Ainda falta registrar quando você concluiu a gravação.');
- if(stage==='review'){work.reviewSentAt=time;work.firstReviewSentAt ||=time;}
+ if(stage==='review'){
+  if(work.deliveryClockMode==='after_capture_and_materials'&&!work.materialsReadyAt)throw new Error('Confirme no painel que recebeu os materiais antes de enviar para avaliação.');
+  work.reviewSentAt=time;work.firstReviewSentAt ||=time;
+ }
  if(stage==='approved')work.approvedAt=time;
  if(stage==='delivered')work.deliveredAt=time;
  work.stage=stage;work.updatedAt=time;work.history.push({stage,at:time});
@@ -98,7 +101,8 @@ export function applyProductionStage(data:ProductionData,clientName:string,stage
   delivered:'Entrega final registrada.',
   planned:'Em planejamento.',scheduled:'Agendado.',cancelled:'Cancelado.'
  };
- return {changed:true,workId:work.id,message:work.clientName+': '+description[stage]};
+ const update=stage==='captured'&&work.deliveryClockMode==='after_capture_and_materials'?'Gravação concluída. Confirme o recebimento dos materiais no painel para iniciar as 72 horas.':description[stage];
+ return {changed:true,workId:work.id,message:work.clientName+': '+update};
 }
 export function recordProductionPayment(data:ProductionData,clientName:string,amountCents:number,operationId:string,message:string,videoTitle?:string,now=new Date()){
  if(!/\b(recebi|caiu na conta|foi pago|me pagou|pagamento recebido)\b/i.test(fold(message)))
@@ -111,6 +115,7 @@ export function recordProductionPayment(data:ProductionData,clientName:string,am
  if(!Number.isFinite(numeric)||Math.round(numeric*100)!==amountCents)
   throw new Error('O valor reconhecido não confere com o que você escreveu. Tente novamente.');
  const work=locateWork(data,clientName,videoTitle);
+ if(work.clientRequestId)throw new Error('Para este pedido, use “Registrar recebimento” e escolha a conta onde o dinheiro entrou. Assim o Financeiro fica certo.');
  if(data.payments.some(p=>p.id===operationId))return {changed:false,message:'Esse recebimento já foi registrado.',workId:work.id};
  const summary=paymentSummary(data,work);
  if(summary.remainingCents===null||amountCents>summary.remainingCents)

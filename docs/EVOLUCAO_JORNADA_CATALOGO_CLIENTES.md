@@ -63,3 +63,66 @@ A mensagem antiga de salvamento é limpa quando ocorre erro. Foram aprovados 46 
 - A troca salva a nova referência antes de remover a capa antiga. Um trabalho automático nunca substitui uma capa já escolhida pelo proprietário. Falha na capa não desfaz o cadastro do vídeo.
 - Validação local: build e 12 testes direcionados aprovados (capas e cadastro de vídeos), incluindo autenticação, validação de imagem, concorrência, limpeza de upload sem referência e exposição pública.
 - Validação em produção: capas geradas para os seis trabalhos existentes; troca manual de capa salva em 5,25 segundos. O portfólio exibe as imagens sem iniciar o carregamento dos vídeos (`readyState=0`, reprodução pausada).
+
+## 28/10/2026 — Fechamento de três caminhos, sem deploy
+
+Estado desta etapa: somente código e validação local. Não publicar, criar preview, enviar à main ou alterar os dados online sem nova instrução de Brito.
+
+Brito confirmou 1 vídeo por R$397, 3 por R$987 e 4 por R$1.000. Confirmou o início das 72 horas depois da gravação e do recebimento dos materiais. Foram preparados os três serviços e a apresentação dos seis trabalhos existentes, preservando os textos já personalizados. A preparação do catálogo vazio é única e só entra em uso quando esta versão for publicada.
+
+A contratação agora preserva quantidade/preço/prazo e prepara um trabalho por vídeo do pacote. Aprovação, projeto e recebível não duplicam; interrupção entre os arquivos é reparada ao atualizar. Cada vídeo recebe prazo próprio, condicionado aos dois fatos confirmados. Trabalhos antigos preservam a contagem anterior.
+
+Pagamentos parciais atualizam o saldo pendente, e a quitação encerra o recebível. Transação, saldo da conta e recebível são gravados juntos no estado financeiro, com proteção de versão e identificador único. A Produção usa ETags de armazenamento verificados, evitando o mesmo tipo de conflito que afetou o cadastro de vídeos.
+
+O cliente acompanha cada vídeo e os recebimentos confirmados em seu link pessoal. O portfólio continua separado dos serviços e preços. Nenhum gateway, Pix, débito automático ou mensagem externa foi ativado.
+
+Validação final: 205 testes gerais + 12 do portfólio (217 aprovados), build/TypeScript e checagem do diff aprovados. As páginas públicas responderam HTTP 200 no servidor local. Os testes completos exercitaram as rotas reais com armazenamento sintético, incluindo concorrência e recuperação de falhas. Não foi realizada validação visual interativa das telas novas nesta etapa.
+
+Detalhes: `FECHAMENTO_TRES_CAMINHOS_SEM_DEPLOY_2026-10-28.md`.
+
+## 28/10/2026 — Briefing, data sugerida e materiais
+
+Estado desta etapa: implementada no código local, compilada, sem deploy, preview ou alteração dos dados online.
+
+- O pedido de vídeo agora pergunta o que o cliente quer mostrar e alcançar. O campo é obrigatório para vídeo; os detalhes extras continuam opcionais.
+- O cliente pode sugerir uma data e informar cidade/bairro. A data aparece como sugestão a confirmar e não reserva horário nem inicia o prazo de entrega.
+- Depois que o pedido for aprovado, o cliente pode anexar até quatro imagens JPG/PNG/WebP ou PDFs, com até 20 MB por arquivo e 50 MB somados, pelo link pessoal.
+- Os arquivos usam a Blob privada já existente. O link do cliente autoriza somente o envio ao próprio pedido; o download exige a sessão do proprietário. Não há links públicos para os anexos.
+- A área de pedidos mostra objetivo, data sugerida, local e links para baixar os anexos. Ao aprovar, o resumo do pedido também acompanha o projeto.
+- Enviar arquivos não confirma que todos os materiais necessários foram recebidos. Brito ainda confirma isso na Produção; só então começa o prazo de 72 horas junto com a gravação.
+- `npm run build` e `npx tsc --noEmit` passaram. O envio real e o retorno do callback do Blob precisam da aplicação hospedada; não foram executados por respeito à instrução de não publicar.
+
+Regras de custo e segurança: upload direto do navegador para a Blob privada, sem encaminhar os arquivos pela função da aplicação; formatos limitados, no máximo quatro arquivos, 20 MB por arquivo e 50 MB no total; download privado apenas pelo proprietário. O uso da Blob ainda pode gerar armazenamento e operações.
+
+## 28/10/2026 — Agendamento, avaliação e entrega privada
+
+Estado: etapas implementadas e verificadas localmente. Sem deploy, preview ou alteração dos dados online.
+
+- Brito pode propor ou remarcar data e horário no pedido aprovado. O cliente confirma pelo link pessoal ou pede outra data e explica o motivo.
+- O sistema bloqueia horário exatamente igual já proposto ou reservado. O painel também avisa quando há várias gravações na mesma data; esse aviso pede conferência manual de deslocamento e capacidade.
+- Brito envia uma prévia privada para cada vídeo. O cliente assiste pelo acompanhamento e pode aprovar ou descrever os ajustes necessários.
+- Após a aprovação, Brito envia o vídeo final privado. O cliente pode assistir ou abrir/baixar. O link temporário renova ao atualizar a página.
+- Pacotes seguem separados por vídeo. Pedido de ajuste retorna o trabalho à etapa de edição, sem perder a data do primeiro envio nem criar cobrança financeira.
+- O código valida tipo, tamanho, etapa e caminho dos arquivos; somente a sessão do proprietário envia vídeos. Arquivos de referência continuam privados, com limites menores.
+- `npx tsc --noEmit`, `npm run test:journey` (32 testes) e `npm run build` passaram. A validação do Blob real exige o projeto hospedado e permanece pendente.
+- Condições de contratação (ajustes incluídos, cancelamento, parcelas/vencimentos, direitos de uso) não foram inventadas. Não há contrato assinado, checkout, integração bancária ou envio externo de mensagens.
+
+Auditoria de fechamento: `FECHAMENTO_ORGANIZAR_CONTRATACAO_SEM_DEPLOY_2026-10-28.md`.
+
+## 29/10/2026 — Sinal de 50% para reservar gravação
+
+- Confirmar uma proposta no link pessoal registra a escolha do cliente, mas não bloqueia a agenda.
+- O sinal é metade do valor total do pedido. Recebimentos parciais são somados entre os vídeos do pacote.
+- Só depois que Brito registra pelo menos 50% como recebido o horário escolhido é salvo como reservado e enviado para a Produção.
+- A tela do cliente explica quanto falta e informa que o site não cobra automaticamente. A tela de pedidos mostra sinal, valor recebido e saldo para reservar.
+- Propostas sem sinal não bloqueiam outra gravação. Se o horário já estiver ocupado quando o sinal for registrado, o pedido pede uma nova data.
+- Teste automatizado cobre pagamento abaixo de 50% e conclusão do sinal; deploy continua não realizado.
+
+## 29/10/2026 — Cancelamento e registro de reembolso
+
+- O cliente pede cancelamento pelo próprio link de acompanhamento.
+- Nos primeiros 7 dias após a reserva paga, o cálculo não aplica taxa e prevê devolução integral. O reembolso continua manual e deve ser feito imediatamente quando se tratar do direito legal de arrependimento.
+- Depois dos 7 dias, antes do início da gravação e após aceite da condição, o sistema calcula 10% do preço total, limitado ao valor pago. Se a produção já começou, exige análise manual.
+- Depois que Brito confirma a transferência manual, o sistema registra a saída no Financeiro, fecha o valor a receber e cancela a produção associada.
+- Os 10% são uma condição comercial escolhida por Brito, não um percentual fixado em lei. Uma penalidade pode ser revista conforme o contrato e o caso concreto; precisa de revisão jurídica antes de ser usada como cláusula definitiva.
+- Teste automatizado cobre as duas regras e o lançamento financeiro. Nenhum deploy foi feito.

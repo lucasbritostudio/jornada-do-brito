@@ -2,6 +2,7 @@ import { get, put, list, head, BlobNotFoundError } from '@vercel/blob';
 import type { WorkspaceState, AuditEntry } from './types';
 import { refreshProfessionalPatterns } from './patterns';
 import { isBlobConflict } from './blob-conflict';
+import { applyApprovedJourneySetup } from './journey-setup';
 
 const STATE_PATH = 'jornada/state.json';
 const AUTH_PATH = 'jornada/auth.json';
@@ -86,7 +87,7 @@ export function upgradeState(raw: unknown): WorkspaceState {
   const base = defaultState();
   const state = (raw && typeof raw === 'object' ? raw : {}) as Partial<WorkspaceState>;
 
-  return {
+  return applyApprovedJourneySetup({
     ...base,
     ...state,
     version: CURRENT_VERSION,
@@ -136,7 +137,7 @@ export function upgradeState(raw: unknown): WorkspaceState {
     importBatches: arr(state.importBatches) as string[],
     createdAt: state.createdAt || base.createdAt,
     updatedAt: state.updatedAt || base.updatedAt,
-  };
+  });
 }
 
 const stateVersions = new WeakMap<WorkspaceState, string | null>();
@@ -251,7 +252,7 @@ export async function getState(): Promise<WorkspaceState> {
     stateVersions.set(upgraded, saved.etag);
     return upgraded;
   }
-  const initial = defaultState();
+  const initial = upgradeState(defaultState());
   // Preserve the original lazy initialization behavior. Create-once avoids
   // silently replacing a concurrent initializer.
   try {

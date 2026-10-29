@@ -18,11 +18,12 @@ class BlobAlreadyExistsError extends Error {
 }
 mock.module('@vercel/blob',{namedExports:{
  ...realBlobSdk,
+  head:async(path:string)=>{if(!etags.has(path))throw new realBlobSdk.BlobNotFoundError();return {etag:etags.get(path)};},
   list:async()=>({blobs:[]}),
   get:async(path:string)=>{
     const content=blobs.get(path);
     if(content===undefined)return null;
-    return {statusCode:200,stream:new Response(content).body,blob:{etag:etags.get(path)}};
+    return {statusCode:200,stream:new Response(content).body,blob:{etag:`delivery-${etags.get(path)}`}};
   },
   put:async(path:string,content:string,opts:{allowOverwrite?:boolean;ifMatch?:string}={})=>{
     const current=etags.get(path);

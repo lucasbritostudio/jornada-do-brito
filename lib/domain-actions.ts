@@ -492,6 +492,10 @@ export function executeDomainAction(
       'valor a receber',
     );
 
+    if (receivable.importKey?.startsWith('client-request:')) {
+      throw new Error('Este recebimento pertence a um pedido do site. Use “Registrar recebimento” na Produção para atualizar o pacote e o Financeiro sem duplicar valores.');
+    }
+
     const amount =
       args.amount_cents || receivable.amountCents;
     if (!amount) {

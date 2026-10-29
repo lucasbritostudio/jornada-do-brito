@@ -8,11 +8,29 @@
 export const PRODUCTION_TIMEZONE = 'America/Fortaleza';
 export type Stage = 'planned' | 'scheduled' | 'captured' | 'editing' | 'review' |
   'changes_requested' | 'approved' | 'delivered' | 'cancelled';
+export type WorkAsset = {
+  id: string;
+  pathname: string;
+  name: string;
+  contentType: 'video/mp4' | 'video/webm' | 'video/quicktime';
+  size: number;
+  createdAt: string;
+};
+export type ClientFeedback = {
+  id: string;
+  decision: 'approved' | 'changes_requested';
+  message?: string;
+  createdAt: string;
+};
 export type Work = {
   id: string;
   clientName: string;
   contactId?: string;
   projectId?: string;
+  clientRequestId?: string;
+  packageSize?: number;
+  deliveryClockMode?: 'after_capture_and_materials';
+  materialsReadyAt?: string;
   title: string;
   stage: Stage;
   scheduledAt?: string;
@@ -21,6 +39,9 @@ export type Work = {
   firstReviewSentAt?: string;
   approvedAt?: string;
   deliveredAt?: string;
+  reviewAsset?: WorkAsset;
+  finalAsset?: WorkAsset;
+  clientFeedback?: ClientFeedback[];
   agreedFeeCents?: number;
   notes?: string;
   history: {stage: Stage; at: string}[];
@@ -90,9 +111,16 @@ export function deadlineFor(capturedAt?:string) {
 export function isProductionFinished(work:Work) {
   return work.stage==='delivered' || work.stage==='cancelled';
 }
+export function deadlineForWork(work: Work) {
+  if (work.deliveryClockMode !== 'after_capture_and_materials') return deadlineFor(work.capturedAt);
+  if (!work.capturedAt || !work.materialsReadyAt) return null;
+  const startMs = Math.max(Date.parse(work.capturedAt), Date.parse(work.materialsReadyAt));
+  if (!Number.isFinite(startMs)) return null;
+  return { startedAt: new Date(startMs).toISOString(), targetAt: new Date(startMs + 48 * 3_600_000).toISOString(), dueAt: new Date(startMs + 72 * 3_600_000).toISOString() };
+}
 export function productionUrgency(work:Work,now=new Date()) {
   if(isProductionFinished(work))return 'finished' as const;
-  const clock=deadlineFor(work.capturedAt);
+  const clock=deadlineForWork(work);
   if(!clock)return 'not_started' as const;
   if(work.firstReviewSentAt){
     if(work.stage==='review')return 'waiting_client' as const;
@@ -119,26 +147,30 @@ export function overlappingEditions(works:Work[]) {
   const groups=new Map<string,string[]>();
   for(const work of works){
     if(!work.capturedAt || isProductionFinished(work))continue;
-    const clock=deadlineFor(work.capturedAt);
+    const clock=deadlineForWork(work);
     if(!clock)continue;
-    const key=clock.startedAt;
+    const {year,month,day}=fmtParts(new Date(clock.startedAt));
+    const key=new Date(Date.UTC(year,month-1,day)).toISOString();
     groups.set(key,[...(groups.get(key)||[]),work.id]);
   }
   return [...groups.entries()].filter(([,ids])=>ids.length>1)
     .map(([day,workIds])=>({startOfWork:day,workIds}));
 }
 export function overlappingBookings(works:Work[]) {
-  const groups=new Map<string,string[]>();
+  const groups=new Map<string,Map<string,string[]>>();
   for(const work of works){
     if(!work.scheduledAt||isProductionFinished(work)||work.capturedAt)continue;
     const when=new Date(work.scheduledAt);
     if(!Number.isFinite(when.getTime()))continue;
     const {year,month,day}=fmtParts(when);
     const key=[year,String(month).padStart(2,'0'),String(day).padStart(2,'0')].join('-');
-    groups.set(key,[...(groups.get(key)||[]),work.id]);
+    const group=groups.get(key)||new Map<string,string[]>();
+    const bookingId=work.clientRequestId||work.id;
+    group.set(bookingId,[...(group.get(bookingId)||[]),work.id]);
+    groups.set(key,group);
   }
-  return [...groups.entries()].filter(([,ids])=>ids.length>1)
-    .map(([date,workIds])=>({date,workIds}));
+  return [...groups.entries()].filter(([,bookings])=>bookings.size>1)
+    .map(([date,bookings])=>({date,workIds:[...bookings.values()].flat()}));
 }
 export function ensureValidDate(input:unknown) {
   if(typeof input!=='string')throw new Error('INVALID_DATE');

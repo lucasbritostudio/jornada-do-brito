@@ -1,22 +1,30 @@
-import { get, put } from '@vercel/blob';
+import { get, put, head, BlobNotFoundError } from '@vercel/blob';
 import {emptyProduction, type ProductionData} from './production';
 import {isBlobConflict} from './blob-conflict';
 
 const PATH='jornada/production-v1.json';
 const versions=new WeakMap<ProductionData,string|null>();
 export class ProductionConflict extends Error {
-  constructor(){super('Os dados foram atualizados em outra sessão; tente novamente.');}
+  constructor(){super('Os dados foram atualizados em outra sessão; tente novamente.');this.name='ProductionConflict';}
 }
 export async function readProduction():Promise<ProductionData>{
-  const result=await get(PATH,{access:'private',useCache:false});
-  if(!result){const empty=emptyProduction();versions.set(empty,null);return empty;}
-  if(!result.blob.etag)throw new Error('PRODUCTION_ETAG_MISSING');
-  const raw=await new Response(result.stream).json() as Partial<ProductionData>;
-  if(raw?.version!==1||!Array.isArray(raw.works)||!Array.isArray(raw.payments))
-    throw new Error('PRODUCTION_INVALID_STATE');
-  const state=raw as ProductionData;
-  versions.set(state,result.blob.etag);
-  return state;
+  for(let attempt=0;attempt<6;attempt++){
+    let before;
+    try{before=await head(PATH);}catch(error){
+      if(!(error instanceof BlobNotFoundError))throw error;
+      const empty=emptyProduction();versions.set(empty,null);return empty;
+    }
+    const result=await get(PATH,{access:'private',useCache:false});
+    if(!result)continue;
+    const raw=await new Response(result.stream).json() as Partial<ProductionData>;
+    let after;
+    try{after=await head(PATH);}catch(error){if(error instanceof BlobNotFoundError)continue;throw error;}
+    if(!before.etag||!after.etag)throw new Error('PRODUCTION_ETAG_MISSING');
+    if(before.etag!==after.etag)continue;
+    if(raw?.version!==1||!Array.isArray(raw.works)||!Array.isArray(raw.payments))throw new Error('PRODUCTION_INVALID_STATE');
+    const state=raw as ProductionData;versions.set(state,after.etag);return state;
+  }
+  throw new ProductionConflict();
 }
 async function persistProduction(state:ProductionData){
   if(!versions.has(state))throw new Error('PRODUCTION_VERSION_REQUIRED');

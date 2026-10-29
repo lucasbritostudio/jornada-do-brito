@@ -20,7 +20,7 @@ const admin=await import('../app/api/client-requests/route');
 const portal=await import('../app/api/public/request-status/route');
 function reset(){authenticated=true;works=[];state={profile:{displayName:'Brito'},serviceCatalog:[{id:'video-1',name:'Filme de marca',description:'Vídeo para sua marca.',priceCents:85000,deliveryMode:'video',published:true,portfolioImageUrl:'javascript:alert(1)'},{id:'hidden',name:'Oculto',description:'Não publicar.',priceCents:100,deliveryMode:'general',published:false}],contacts:[],opportunities:[],projects:[],tasks:[],clientRequests:[],receivables:[],audit:[]};}
 async function send(route:any,path:string,body:any){const response=await route.POST(new Request(`https://local${path}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}));return {status:response.status,data:await response.json()};}
-const input={requestId:'request-id-000000000001',portalToken:'token-value-000000000000000001',serviceId:'video-1',name:'Ana Cliente',email:'ana@example.com',phone:'5511999999999',note:'Vídeo de apresentação',consent:true};
+const input={requestId:'request-id-000000000001',portalToken:'token-value-000000000000000001',serviceId:'video-1',name:'Ana Cliente',email:'ana@example.com',phone:'5511999999999',objective:'Apresentar meu trabalho para novos clientes.',note:'Vídeo de apresentação',consent:true};
 
 test('página pública lista só serviços publicados e URLs seguras',async()=>{
   reset();const response=await pub.GET();const data=await response.json();

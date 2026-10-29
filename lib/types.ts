@@ -75,6 +75,7 @@ export type ServiceOffering = {
   description: string;
   priceCents: number;
   deliveryMode: 'video' | 'general';
+  videoQuantity?: number;
   deliveryLabel?: string;
   portfolioImageUrl?: string;
   portfolioLinks?: string[];
@@ -108,14 +109,51 @@ export type ClientRequest = {
   serviceName: string;
   deliveryMode: 'video' | 'general';
   agreedPriceCents: number;
+  videoQuantity?: number;
+  deliveryLabel?: string;
+  deliveryClockMode?: 'after_capture_and_materials';
+  objective?: string;
+  desiredDate?: string;
+  bookingStatus?: 'not_scheduled' | 'proposed' | 'confirmed' | 'change_requested' | 'reschedule_proposed' | 'awaiting_deposit' | 'deposit_paid_reschedule_needed';
+  scheduleProposalAt?: string;
+  scheduledAt?: string;
+  scheduleMessage?: string;
+  bookingReservedAt?: string;
+  cancellationTermsAcceptedAt?: string;
+  cancellation?: {
+    requestedAt: string;
+    status: 'refund_pending' | 'review_required' | 'refunded';
+    reason?: string;
+    rule: 'cooling_off_full_refund' | 'no_reservation_full_refund' | 'reservation_fee_10_percent' | 'manual_review';
+    paidCents: number;
+    feeCents?: number;
+    refundCents?: number;
+    refundDeadlineAt?: string;
+    refundedAt?: string;
+    refundTransactionId?: string;
+  };
+  location?: string;
+  materials?: ClientRequestMaterial[];
+  requestFingerprint?: string;
   note?: string;
   status: 'pending' | 'accepted' | 'declined';
   projectId?: Id;
   workId?: Id;
+  workIds?: Id[];
   taskId?: Id;
   portalTokenHash?: string;
   createdAt: string;
   updatedAt: string;
+};
+
+export type ClientRequestMaterial = {
+  id: Id;
+  /** Private Vercel Blob path. Never exposed by customer-facing endpoints. */
+  pathname: string;
+  name: string;
+  contentType: 'image/jpeg' | 'image/png' | 'image/webp' | 'application/pdf';
+  size: number;
+  createdAt: string;
 };
 
 export type VideoBrief = {
@@ -215,6 +253,8 @@ export type Receivable = {
   projectId?: Id;
   title: string;
   amountCents?: number;
+  agreedAmountCents?: number;
+  receivedCents?: number;
   certainty: 'confirmed' | 'estimate' | 'forecast';
   status: 'pending' | 'received' | 'cancelled';
   expectedOn?: string;

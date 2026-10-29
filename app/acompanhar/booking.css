@@ -1,0 +1,4 @@
+.svc-booking-response{display:grid;gap:8px;margin:18px 0;padding:16px;text-align:left;border:1px solid var(--line);border-radius:14px;background:#0c1014}
+.svc-booking-response p{margin:4px 0;line-height:1.55}
+.svc-terms-check{display:flex;align-items:flex-start;gap:10px;margin:8px 0;padding:12px;border:1px solid var(--line);border-radius:10px;color:var(--muted);font-size:13px;line-height:1.5}
+.svc-terms-check input{margin-top:3px;accent-color:#b9f36a;flex:0 0 auto}
